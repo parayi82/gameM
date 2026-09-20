@@ -1,0 +1,35 @@
+{
+  "chapterId": 2,
+  "title": "La Cabaña — Capítulo 2: El sótano",
+  "startNode": "ch2_intro",
+  "totalEndings": 1,
+  "endings": {
+    "final_ch2_sample": { "type": "agridulce" }
+  },
+  "nodes": {
+    "ch2_intro": {
+      "id": "ch2_intro",
+      "chapter": 2,
+      "decisionPoint": true,
+      "background": "assets/ch2/ch2_intro.svg",
+      "text": "Bajas la escalera. El aire huele a tierra húmeda y a algo más que no reconoces todavía.",
+      "whisper": "Este capítulo está en construcción — contenido completo próximamente.",
+      "hotspots": [
+        {
+          "id": "salida",
+          "coords": [38, 14, 20, 70],
+          "action": "goto",
+          "nextNode": "final_ch2_sample"
+        }
+      ]
+    },
+    "final_ch2_sample": {
+      "id": "final_ch2_sample",
+      "chapter": 2,
+      "ending": true,
+      "background": "assets/ch2/final_ch2_sample.svg",
+      "text": "Fin de la muestra del capítulo 2. El resto de la historia continuará pronto.",
+      "hotspots": []
+    }
+  }
+}

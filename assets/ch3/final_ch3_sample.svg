@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#200e0e"/>
+      <stop offset="100%" stop-color="#3a1616"/>
+    </linearGradient>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#g)"/>
+  <rect width="1280" height="720" filter="url(#grain)" opacity="0.06"/>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, serif" font-size="42" fill="#f2ede4" opacity="0.85">Final capítulo 3 (muestra)</text>
+  <text x="50%" y="58%" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, serif" font-size="20" fill="#f2ede4" opacity="0.5">placeholder — reemplazar con scripts/generate-art.js</text>
+</svg>

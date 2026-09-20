@@ -1,0 +1,107 @@
+{
+  "chapterId": 1,
+  "title": "La Cabaña — Capítulo 1: El cajón, la llave, la puerta",
+  "startNode": "cabana_intro",
+  "totalEndings": 4,
+  "endings": {
+    "final_frio": { "type": "tragico" },
+    "final_descubierta": { "type": "tragico" },
+    "final_agridulce": { "type": "agridulce" },
+    "final_verdadero": { "type": "verdadero" }
+  },
+  "nodes": {
+    "cabana_intro": {
+      "id": "cabana_intro",
+      "chapter": 1,
+      "decisionPoint": true,
+      "background": "assets/ch1/cabana_intro.svg",
+      "text": "El viento golpea los postigos. Hace frío y no sabes cuánto tiempo llevas encerrada aquí.",
+      "whisper": "Busca a tu alrededor antes de que el frío te alcance.",
+      "timer": { "seconds": 45, "onExpire": "final_frio" },
+      "hotspots": [
+        {
+          "id": "cajon",
+          "coords": [6, 58, 20, 26],
+          "action": "reveal_item",
+          "item": { "id": "llave", "name": "Llave oxidada", "icon": "llave.svg" },
+          "onceOnly": true,
+          "textAfter": "Al fondo del cajón encuentras una llave oxidada."
+        },
+        {
+          "id": "ventana",
+          "coords": [66, 10, 26, 38],
+          "action": "set_flag",
+          "flag": "ventana_cerrada",
+          "onceOnly": true,
+          "stopsTimer": true,
+          "textAfter": "Empujas el marco y trabas el pasador. El viento deja de aullar."
+        },
+        {
+          "id": "puerta",
+          "coords": [38, 14, 20, 70],
+          "action": "requires_item",
+          "requiredItem": "llave",
+          "onSuccess": "next_node:pasillo_ch2",
+          "onFail": "text:La cerradura es antigua. Necesitas algo en la mano."
+        }
+      ]
+    },
+    "pasillo_ch2": {
+      "id": "pasillo_ch2",
+      "chapter": 1,
+      "decisionPoint": true,
+      "background": "assets/ch1/pasillo_ch2.svg",
+      "text": "El pasillo se bifurca. A la izquierda, una luz temblorosa; a la derecha, silencio absoluto.",
+      "whisper": "Elige con cuidado: no hay vuelta atrás.",
+      "hotspots": [
+        {
+          "id": "puerta_izquierda",
+          "coords": [8, 20, 32, 60],
+          "action": "goto",
+          "nextNode": "final_agridulce"
+        },
+        {
+          "id": "puerta_derecha",
+          "coords": [60, 20, 32, 60],
+          "action": "requires_flag",
+          "flag": "ventana_cerrada",
+          "expected": true,
+          "onSuccess": "next_node:final_verdadero",
+          "onFail": "next_node:final_descubierta"
+        }
+      ]
+    },
+    "final_frio": {
+      "id": "final_frio",
+      "chapter": 1,
+      "ending": true,
+      "background": "assets/ch1/final_frio.svg",
+      "text": "El frío te vence antes de encontrar la salida. Los postigos siguen golpeando, ahora sin nadie que los escuche.",
+      "hotspots": []
+    },
+    "final_descubierta": {
+      "id": "final_descubierta",
+      "chapter": 1,
+      "ending": true,
+      "background": "assets/ch1/final_descubierta.svg",
+      "text": "La ventana sin trabar deja entrar algo más que el viento. Te encuentran antes de cruzar el umbral.",
+      "hotspots": []
+    },
+    "final_agridulce": {
+      "id": "final_agridulce",
+      "chapter": 1,
+      "ending": true,
+      "background": "assets/ch1/final_agridulce.svg",
+      "text": "Escapas por la izquierda, pero dejas atrás algo que no podrás recuperar. Estás libre, y eso pesa más de lo que esperabas.",
+      "hotspots": []
+    },
+    "final_verdadero": {
+      "id": "final_verdadero",
+      "chapter": 1,
+      "ending": true,
+      "background": "assets/ch1/final_verdadero.svg",
+      "text": "Cierras la ventana, tomas la llave, y cruzas el umbral sabiendo exactamente qué dejas atrás. Estás libre — de verdad.",
+      "hotspots": []
+    }
+  }
+}

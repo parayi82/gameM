@@ -1,0 +1,10 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+  command = "echo 'sin build step — sitio estático + funciones'"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Sitio estático de una sola página (index.html) + funciones bajo
+# /.netlify/functions/*; no se necesita ningún redirect adicional.

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "ch1_cabana_intro",
+    "prompt": "Interior de una cabaña de madera en la noche, iluminada por una única vela, postigos de madera vibrando por el viento, atmósfera de tensión y aislamiento, estilo pintura digital cinematográfica, sin texto ni personajes visibles en primer plano, proporción 16:9",
+    "outputPath": "assets/ch1/cabana_intro.png"
+  },
+  {
+    "id": "ch1_pasillo_ch2",
+    "prompt": "Pasillo estrecho de madera vieja que se bifurca en dos puertas, luz cálida temblorosa a la izquierda, oscuridad absoluta a la derecha, atmósfera de suspenso room-escape, pintura digital cinematográfica, proporción 16:9",
+    "outputPath": "assets/ch1/pasillo_ch2.png"
+  },
+  {
+    "id": "ch1_final_frio",
+    "prompt": "Ventana de cabaña cubierta de escarcha desde dentro, luz azulada fría, sensación de frío mortal y soledad, pintura digital cinematográfica, proporción 16:9",
+    "outputPath": "assets/ch1/final_frio.png"
+  },
+  {
+    "id": "ch1_final_descubierta",
+    "prompt": "Silueta de una figura entrando por una ventana abierta de noche hacia una habitación de cabaña, tensión y peligro inminente, tonos rojizos oscuros, pintura digital cinematográfica, proporción 16:9",
+    "outputPath": "assets/ch1/final_descubierta.png"
+  },
+  {
+    "id": "ch1_final_agridulce",
+    "prompt": "Puerta abierta de una cabaña de madera hacia un amanecer dorado, figura saliendo de espaldas dejando algo atrás en la penumbra, tono agridulce, pintura digital cinematográfica, proporción 16:9",
+    "outputPath": "assets/ch1/final_agridulce.png"
+  },
+  {
+    "id": "ch1_final_verdadero",
+    "prompt": "Puerta de cabaña completamente abierta hacia un bosque bañado en luz de amanecer clara y esperanzadora, sensación de libertad total, pintura digital cinematográfica, proporción 16:9",
+    "outputPath": "assets/ch1/final_verdadero.png"
+  },
+  {
+    "id": "icon_llave",
+    "prompt": "Icono de una llave antigua oxidada, fondo transparente, estilo item de inventario de videojuego, iluminación suave, vista frontal, minimalista",
+    "outputPath": "assets/icons/llave.png"
+  }
+]

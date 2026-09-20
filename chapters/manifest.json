@@ -1,0 +1,7 @@
+{
+  "chapters": [
+    { "id": 1, "title": "Capítulo 1: El cajón, la llave, la puerta", "file": "chapters/ch1.json", "free": true, "priceUSD": 0 },
+    { "id": 2, "title": "Capítulo 2: El sótano", "file": "chapters/ch2.json", "free": true, "priceUSD": 0 },
+    { "id": 3, "title": "Capítulo 3: El desván", "file": "chapters/ch3.json", "free": false, "priceUSD": 1.99 }
+  ]
+}

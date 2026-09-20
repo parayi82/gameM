@@ -1,0 +1,35 @@
+{
+  "chapterId": 3,
+  "title": "La Cabaña — Capítulo 3: El desván",
+  "startNode": "ch3_intro",
+  "totalEndings": 1,
+  "endings": {
+    "final_ch3_sample": { "type": "tragico" }
+  },
+  "nodes": {
+    "ch3_intro": {
+      "id": "ch3_intro",
+      "chapter": 3,
+      "decisionPoint": true,
+      "background": "assets/ch3/ch3_intro.svg",
+      "text": "El desván está cerrado con un candado nuevo. Alguien no quiere que llegues hasta aquí.",
+      "whisper": "Capítulo de pago — contenido completo próximamente.",
+      "hotspots": [
+        {
+          "id": "candado",
+          "coords": [38, 14, 20, 70],
+          "action": "goto",
+          "nextNode": "final_ch3_sample"
+        }
+      ]
+    },
+    "final_ch3_sample": {
+      "id": "final_ch3_sample",
+      "chapter": 3,
+      "ending": true,
+      "background": "assets/ch3/final_ch3_sample.svg",
+      "text": "Fin de la muestra del capítulo 3.",
+      "hotspots": []
+    }
+  }
+}
