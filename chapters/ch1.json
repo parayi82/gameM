@@ -78,7 +78,8 @@
       "character": {
         "name": "Ana",
         "portrait": "assets/characters/protagonista.jpg"
-      }
+      },
+      "ambient": "wind"
     },
     "pasillo_ch2": {
       "id": "pasillo_ch2",
@@ -117,7 +118,8 @@
       "character": {
         "name": "Ana",
         "portrait": "assets/characters/protagonista.jpg"
-      }
+      },
+      "ambient": "hum"
     },
     "final_frio": {
       "id": "final_frio",

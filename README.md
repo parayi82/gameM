@@ -42,6 +42,22 @@ Ver `chapters/ch1.json` para el capítulo de referencia completo (cajón →
 llave → puerta, con timer de tensión por la ventana, y 4 finales:
 trágico ×2, agridulce, verdadero).
 
+## Personajes, sonido y animación
+
+- **Retrato de personaje**: campo opcional `node.character = {name, portrait}`.
+  Se muestra junto al texto (pensamientos/diálogo de la protagonista), con
+  una animación de entrada y un leve movimiento idle en CSS.
+- **Sonido**: sintetizado en runtime con Web Audio API (`engine/audio.js`) —
+  sin archivos de audio que mantener. El motor elige el sonido **por tipo de
+  acción/resultado** (recoger ítem, click, fallo, desbloqueo, final) igual
+  que resuelve la lógica en `actions.js`. Sonido ambiente por nodo vía
+  `node.ambient` (`"wind"`, `"hum"` o ausente = silencio); se activa con el
+  primer gesto del usuario (política de autoplay de los navegadores) y se
+  puede silenciar con el botón "Sonido" en pantalla.
+- **Animación**: transición de fundido entre fondos, texto que entra con
+  fade, vignette pulsante cuando el timer baja de 10s, y feedback visual en
+  los hotspots al hacer click — todo CSS, sin librerías.
+
 ## Ramificación y finales
 
 - Los nodos marcados `"decisionPoint": true` guardan un snapshot de

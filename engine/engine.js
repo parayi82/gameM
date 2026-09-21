@@ -2,6 +2,17 @@ import { GameState } from "./state.js";
 import { SceneTimer } from "./timer.js";
 import { resolveAction } from "./actions.js";
 import { Renderer } from "./render.js";
+import { SoundManager } from "./audio.js";
+
+// Sonido de feedback por TIPO de acción/resultado — igual que actions.js,
+// nunca hardcodeado por escena.
+const ACTION_SOUND = {
+  reveal_item: (sound) => sound.playPickup(),
+  set_flag: (sound) => sound.playClick(),
+  goto: (sound) => sound.playClick(),
+  requires_item: (sound, result) => (result.branch === "success" ? sound.playUnlock() : sound.playFail()),
+  requires_flag: (sound, result) => (result.branch === "success" ? sound.playUnlock() : sound.playFail()),
+};
 
 // Motor genérico: lee nodos por id desde chapterData.nodes, resuelve hotspots
 // por TIPO de acción (actions.js), nunca por id de escena.
@@ -12,10 +23,16 @@ export class GameEngine {
     this.persistence = persistence;
     this.onChapterComplete = onChapterComplete;
     this.state = new GameState({ chapterId: chapterData.chapterId, currentNodeId: chapterData.startNode });
+    this.sound = new SoundManager();
     this.timer = new SceneTimer({
-      onTick: (s) => this.renderer.renderTimer(s, this._currentTimerTotal),
+      onTick: (s) => {
+        this.renderer.renderTimer(s, this._currentTimerTotal);
+        if (s <= 10) this.sound.startTension();
+      },
       onExpire: () => this._handleTimerExpire(),
     });
+    this.renderer.setMuteLabel(false);
+    this.renderer.bindMuteToggle(() => this._toggleMute());
   }
 
   async loadProgress() {
@@ -42,6 +59,8 @@ export class GameEngine {
     }
 
     this.timer.stop();
+    this.sound.stopTension();
+    this.sound.startAmbient(node.ambient || "none");
     this.renderer.renderNode(node, { onHotspotClick: (hotspot) => this._handleHotspot(node, hotspot) });
     this.renderer.renderInventory(this.state.inventory);
 
@@ -66,8 +85,12 @@ export class GameEngine {
 
     const result = resolveAction(hotspot, this.state);
 
+    ACTION_SOUND[hotspot.action]?.(this.sound, result);
     if (hotspot.onceOnly) this._markHotspotUsed(node.id, hotspot.id);
-    if (result.endTimer) this.timer.stop();
+    if (result.endTimer) {
+      this.timer.stop();
+      this.sound.stopTension();
+    }
     if (result.textAfter) this.renderer.showFloatingText(result.textAfter);
     if (hotspot.action === "reveal_item" || hotspot.action === "set_flag") {
       this.renderer.renderInventory(this.state.inventory);
@@ -96,10 +119,12 @@ export class GameEngine {
   _showEnding(node) {
     this.state.unlockEnding(node.id);
     this._persist();
+    const endingMeta = this.chapterData.endings[node.id];
+    this.sound.playEndingSting(endingMeta?.type);
     const totalEndings = Object.keys(this.chapterData.endings || {}).length;
     const canRewind = !!this.state.lastDecisionPoint;
     this.renderer.renderEndingScreen({
-      ending: { ...this.chapterData.endings[node.id], label: node.text },
+      ending: { ...endingMeta, label: node.text },
       unlockedCount: this.state.endingsUnlocked.size,
       totalEndings,
       canRewind,
@@ -118,6 +143,16 @@ export class GameEngine {
       await this.persistence.saveProgress(this.state);
     } catch (err) {
       console.warn("No se pudo guardar el progreso:", err);
+    }
+  }
+
+  _toggleMute() {
+    this._muted = !this._muted;
+    this.sound.setMuted(this._muted);
+    this.renderer.setMuteLabel(this._muted);
+    if (!this._muted) {
+      const node = this._getNode(this.state.currentNodeId);
+      this.sound.startAmbient(node.ambient || "none");
     }
   }
 }

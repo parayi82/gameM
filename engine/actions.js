@@ -14,9 +14,11 @@ export function parseOutcome(outcome) {
 }
 
 // Ejecuta la acción de un hotspot contra el estado actual.
-// Devuelve: { textAfter, nextNodeId, endTimer }
+// Devuelve: { textAfter, nextNodeId, endTimer, branch }
+// `branch` ("success"|"fail"|null) permite feedback genérico (sonido, animación)
+// por RESULTADO sin acoplarse a la escena.
 export function resolveAction(hotspot, state) {
-  const result = { textAfter: hotspot.textAfter || null, nextNodeId: null, endTimer: !!hotspot.stopsTimer };
+  const result = { textAfter: hotspot.textAfter || null, nextNodeId: null, endTimer: !!hotspot.stopsTimer, branch: null };
 
   switch (hotspot.action) {
     case "reveal_item": {
@@ -31,6 +33,7 @@ export function resolveAction(hotspot, state) {
 
     case "requires_item": {
       const ok = state.hasItem(hotspot.requiredItem);
+      result.branch = ok ? "success" : "fail";
       const outcome = parseOutcome(ok ? hotspot.onSuccess : hotspot.onFail);
       return applyOutcome(result, outcome);
     }
@@ -38,6 +41,7 @@ export function resolveAction(hotspot, state) {
     case "requires_flag": {
       const expected = hotspot.expected ?? true;
       const ok = state.hasFlag(hotspot.flag, expected);
+      result.branch = ok ? "success" : "fail";
       const outcome = parseOutcome(ok ? hotspot.onSuccess : hotspot.onFail);
       return applyOutcome(result, outcome);
     }
