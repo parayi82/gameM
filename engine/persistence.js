@@ -83,6 +83,7 @@ class SupabasePersistence {
         inventory: payload.inventory,
         endings_unlocked: payload.endingsUnlocked,
         last_decision_point: payload.lastDecisionPoint,
+        score: payload.score,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,chapter_id" }
@@ -109,6 +110,7 @@ class SupabasePersistence {
       visitedNodes: data.visited_nodes || [],
       endingsUnlocked: data.endings_unlocked || [],
       lastDecisionPoint: data.last_decision_point || null,
+      score: data.score || 0,
     };
   }
 

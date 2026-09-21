@@ -10,6 +10,11 @@
     "outputPath": "assets/ch1/pasillo_ch2.png"
   },
   {
+    "id": "ch1_minigame_pasillo",
+    "prompt": "Armario de madera semiabierto en un pasillo estrecho, contenido desparramado por el suelo (papeles, objetos pequeños, cajas), iluminación tenue y cálida, atmósfera de búsqueda apresurada, pintura digital cinematográfica, sin texto ni personajes, proporción 16:9",
+    "outputPath": "assets/ch1/minigame_pasillo.png"
+  },
+  {
     "id": "ch1_final_frio",
     "prompt": "Ventana de cabaña cubierta de escarcha desde dentro, luz azulada fría, sensación de frío mortal y soledad, pintura digital cinematográfica, proporción 16:9",
     "outputPath": "assets/ch1/final_frio.png"

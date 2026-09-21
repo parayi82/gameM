@@ -42,6 +42,40 @@ Ver `chapters/ch1.json` para el capítulo de referencia completo (cajón →
 llave → puerta, con timer de tensión por la ventana, y 4 finales:
 trágico ×2, agridulce, verdadero).
 
+## Minijuego: búsqueda a contrarreloj
+
+Un nodo con `"type": "minigame"` se resuelve con una rama de motor separada
+(`GameEngine._handleMinigameHotspot`), pero por **tipo de nodo**, no por
+escena — el patrón es el mismo que `actions.js`. Estructura:
+
+```json
+{
+  "type": "minigame",
+  "timer": { "seconds": 20, "onExpire": "nodo_si_se_acaba_el_tiempo" },
+  "minigame": {
+    "pointsPerFind": 10,
+    "timeBonusPerSecond": 2,
+    "decoyPenalty": 5,
+    "onComplete": "nodo_si_encuentra_todo"
+  },
+  "hotspots": [
+    { "id": "pista_1", "coords": [x, y, w, h], "kind": "target" },
+    { "id": "trasto_1", "coords": [x, y, w, h], "kind": "decoy" }
+  ]
+}
+```
+
+Cada hotspot es `"target"` (suma puntos, cuenta para completar) o `"decoy"`
+(resta puntos, no cuenta). Al encontrar todos los targets se suma un bono
+por segundos restantes y se avanza a `minigame.onComplete`; si se acaba el
+tiempo primero, avanza a `timer.onExpire` con el puntaje parcial ya sumado.
+Ver `minigame_pasillo` en `chapters/ch1.json` (entre `cabana_intro` y
+`pasillo_ch2`: 3 pistas ocultas entre trastos, 20 segundos).
+
+El puntaje (`state.score`) se persiste junto al resto del progreso — en
+Supabase requiere la columna `score` en `progress`
+(`supabase/migrations/002_add_score.sql` si ya corriste el schema base).
+
 ## Personajes, sonido y animación
 
 - **Retrato de personaje**: campo opcional `node.character = {name, portrait}`.

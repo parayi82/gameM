@@ -1,6 +1,6 @@
 // Estado de juego para un capítulo en curso. Sin lógica de escenas: solo datos + helpers.
 export class GameState {
-  constructor({ chapterId, currentNodeId, flags = {}, inventory = [], visitedNodes = [], endingsUnlocked = [], lastDecisionPoint = null } = {}) {
+  constructor({ chapterId, currentNodeId, flags = {}, inventory = [], visitedNodes = [], endingsUnlocked = [], lastDecisionPoint = null, score = 0 } = {}) {
     this.chapterId = chapterId;
     this.currentNodeId = currentNodeId;
     this.flags = { ...flags };
@@ -8,6 +8,11 @@ export class GameState {
     this.visitedNodes = new Set(visitedNodes);
     this.endingsUnlocked = new Set(endingsUnlocked);
     this.lastDecisionPoint = lastDecisionPoint; // { nodeId, snapshot: { flags, inventory } }
+    this.score = score;
+  }
+
+  addScore(delta) {
+    this.score = Math.max(0, this.score + delta);
   }
 
   hasItem(itemId) {
@@ -67,6 +72,7 @@ export class GameState {
       visitedNodes: [...this.visitedNodes],
       endingsUnlocked: [...this.endingsUnlocked],
       lastDecisionPoint: this.lastDecisionPoint,
+      score: this.score,
     };
   }
 }

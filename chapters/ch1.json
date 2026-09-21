@@ -71,7 +71,7 @@
           ],
           "action": "requires_item",
           "requiredItem": "llave",
-          "onSuccess": "next_node:pasillo_ch2",
+          "onSuccess": "next_node:minigame_pasillo",
           "onFail": "text:La cerradura es antigua. Necesitas algo en la mano."
         }
       ],
@@ -80,6 +80,61 @@
         "portrait": "assets/characters/protagonista.jpg"
       },
       "ambient": "wind"
+    },
+    "minigame_pasillo": {
+      "id": "minigame_pasillo",
+      "chapter": 1,
+      "type": "minigame",
+      "background": "assets/ch1/minigame_pasillo.svg",
+      "text": "Un armario semiabierto vuelca su contenido sobre el suelo del pasillo. Entre los trastos, algo podría servirte.",
+      "whisper": "Encontrá las 3 pistas antes de que se acabe el tiempo. Lo demás son solo trastos viejos.",
+      "character": {
+        "name": "Ana",
+        "portrait": "assets/characters/protagonista.jpg"
+      },
+      "ambient": "hum",
+      "timer": {
+        "seconds": 20,
+        "onExpire": "pasillo_ch2"
+      },
+      "minigame": {
+        "pointsPerFind": 10,
+        "timeBonusPerSecond": 2,
+        "decoyPenalty": 5,
+        "onComplete": "pasillo_ch2"
+      },
+      "hotspots": [
+        {
+          "id": "pista_nota",
+          "coords": [8, 62, 14, 18],
+          "kind": "target"
+        },
+        {
+          "id": "pista_foto",
+          "coords": [46, 28, 14, 18],
+          "kind": "target"
+        },
+        {
+          "id": "pista_boton",
+          "coords": [78, 60, 14, 18],
+          "kind": "target"
+        },
+        {
+          "id": "trasto_1",
+          "coords": [25, 18, 14, 18],
+          "kind": "decoy"
+        },
+        {
+          "id": "trasto_2",
+          "coords": [60, 45, 14, 18],
+          "kind": "decoy"
+        },
+        {
+          "id": "trasto_3",
+          "coords": [30, 68, 14, 18],
+          "kind": "decoy"
+        }
+      ]
     },
     "pasillo_ch2": {
       "id": "pasillo_ch2",

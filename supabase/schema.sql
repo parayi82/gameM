@@ -11,6 +11,7 @@ create table if not exists public.progress (
   inventory jsonb not null default '[]'::jsonb,
   endings_unlocked jsonb not null default '[]'::jsonb,
   last_decision_point jsonb,
+  score integer not null default 0,
   updated_at timestamptz not null default now(),
   primary key (user_id, chapter_id)
 );

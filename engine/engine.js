@@ -61,7 +61,17 @@ export class GameEngine {
     this.timer.stop();
     this.sound.stopTension();
     this.sound.startAmbient(node.ambient || "none");
-    this.renderer.renderNode(node, { onHotspotClick: (hotspot) => this._handleHotspot(node, hotspot) });
+    this.renderer.renderScoreboard(this.state.score);
+
+    if (node.type === "minigame") {
+      this._minigameFound = new Set();
+      this._minigameTotalTargets = (node.hotspots || []).filter((h) => h.kind === "target").length;
+      this.renderer.renderNode(node, { onHotspotClick: (hotspot) => this._handleMinigameHotspot(node, hotspot) });
+      this.renderer.renderMinigameHud(0, this._minigameTotalTargets);
+    } else {
+      this.renderer.renderNode(node, { onHotspotClick: (hotspot) => this._handleHotspot(node, hotspot) });
+      this.renderer.hideMinigameHud();
+    }
     this.renderer.renderInventory(this.state.inventory);
 
     if (node.timer) {
@@ -101,6 +111,45 @@ export class GameEngine {
 
     if (result.nextNodeId) {
       this._enterNode(result.nextNodeId);
+    }
+  }
+
+  // Minijuego de búsqueda a contrarreloj: cada hotspot es "target" o "decoy",
+  // resuelto genéricamente por kind — no por escena. Reutiliza el mismo
+  // timer/onExpire que un nodo normal (node.timer.onExpire = destino al
+  // agotarse el tiempo); al completar todos los targets antes, se suma un
+  // bono por tiempo restante y se avanza a node.minigame.onComplete.
+  _handleMinigameHotspot(node, hotspot) {
+    if (this._hotspotUsed(node.id, hotspot.id)) return;
+    this._markHotspotUsed(node.id, hotspot.id);
+
+    if (hotspot.kind === "target") {
+      this._minigameFound.add(hotspot.id);
+      this.state.addScore(node.minigame.pointsPerFind ?? 10);
+      this.renderer.markHotspotFound(hotspot.id);
+      this.sound.playPickup();
+    } else {
+      const penalty = node.minigame.decoyPenalty ?? 5;
+      this.state.addScore(-penalty);
+      this.renderer.markHotspotPenalty(hotspot.id);
+      this.sound.playFail();
+      this.renderer.showFloatingText(`Eso no era lo que buscabas. -${penalty} puntos.`);
+    }
+
+    this.renderer.renderScoreboard(this.state.score);
+    this.renderer.renderMinigameHud(this._minigameFound.size, this._minigameTotalTargets);
+    this._persist();
+
+    if (this._minigameFound.size >= this._minigameTotalTargets) {
+      const bonus = Math.max(0, this.timer.remaining) * (node.minigame.timeBonusPerSecond ?? 0);
+      if (bonus > 0) this.state.addScore(bonus);
+      this.timer.stop();
+      this.sound.stopTension();
+      this.renderer.renderScoreboard(this.state.score);
+      this.renderer.showFloatingText(bonus > 0 ? `¡Encontraste todo! +${bonus} de bono por tiempo.` : "¡Encontraste todo!");
+      this._persist();
+      const dest = node.minigame.onComplete;
+      setTimeout(() => this._enterNode(dest), 900);
     }
   }
 

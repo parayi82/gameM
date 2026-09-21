@@ -8,6 +8,8 @@ export class Renderer {
         <div id="hotspot-layer"></div>
         <div id="timer-bar" class="hidden"><div id="timer-fill"></div><span id="timer-label"></span></div>
         <button id="mute-toggle" type="button">Sonido: ON</button>
+        <div id="score-board">Puntos: 0</div>
+        <div id="minigame-hud" class="hidden"></div>
         <div id="inventory-bar"></div>
         <div id="character-portrait" class="hidden">
           <img id="character-portrait-img" alt="" />
@@ -34,6 +36,31 @@ export class Renderer {
     this.characterName = this.root.querySelector("#character-name");
     this.scene = this.root.querySelector("#scene");
     this.muteToggle = this.root.querySelector("#mute-toggle");
+    this.scoreBoard = this.root.querySelector("#score-board");
+    this.minigameHud = this.root.querySelector("#minigame-hud");
+  }
+
+  renderScoreboard(score) {
+    this.scoreBoard.textContent = `Puntos: ${score}`;
+  }
+
+  renderMinigameHud(found, total) {
+    this.minigameHud.classList.remove("hidden");
+    this.minigameHud.textContent = `Encontrados: ${found}/${total}`;
+  }
+
+  hideMinigameHud() {
+    this.minigameHud.classList.add("hidden");
+  }
+
+  markHotspotFound(hotspotId) {
+    const el = this.hotspotLayer.querySelector(`[aria-label="${CSS.escape(hotspotId)}"]`);
+    if (el) el.classList.add("found");
+  }
+
+  markHotspotPenalty(hotspotId) {
+    const el = this.hotspotLayer.querySelector(`[aria-label="${CSS.escape(hotspotId)}"]`);
+    if (el) el.classList.add("penalty");
   }
 
   bindMuteToggle(onToggle) {

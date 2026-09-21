@@ -74,6 +74,25 @@ html, body {
 .hotspot:active { transform: scale(0.96); background: rgba(200, 162, 74, 0.38); }
 .hotspot.disabled { pointer-events: none; opacity: 0.15; border-style: dashed; }
 
+.hotspot.found {
+  pointer-events: none;
+  background: rgba(74, 154, 122, 0.35);
+  border-color: #4a9a7a;
+}
+
+.hotspot.penalty {
+  pointer-events: none;
+  background: rgba(178, 65, 47, 0.4);
+  border-color: var(--danger);
+  animation: hotspot-shake 0.35s ease;
+}
+
+@keyframes hotspot-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
 #mute-toggle {
   position: absolute;
   top: 16px;
@@ -127,6 +146,31 @@ html, body {
   right: 16px;
   display: flex;
   gap: 8px;
+}
+
+#score-board {
+  position: absolute;
+  top: 56px;
+  left: 16px;
+  z-index: 3;
+  padding: 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+#minigame-hud {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 4px 14px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 0.8rem;
 }
 
 .inventory-item {
