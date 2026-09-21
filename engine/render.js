@@ -8,6 +8,10 @@ export class Renderer {
         <div id="hotspot-layer"></div>
         <div id="timer-bar" class="hidden"><div id="timer-fill"></div><span id="timer-label"></span></div>
         <div id="inventory-bar"></div>
+        <div id="character-portrait" class="hidden">
+          <img id="character-portrait-img" alt="" />
+          <span id="character-name"></span>
+        </div>
         <div id="text-box">
           <p id="scene-text"></p>
           <p id="scene-whisper"></p>
@@ -24,6 +28,9 @@ export class Renderer {
     this.sceneText = this.root.querySelector("#scene-text");
     this.sceneWhisper = this.root.querySelector("#scene-whisper");
     this.overlay = this.root.querySelector("#overlay-screen");
+    this.characterPortrait = this.root.querySelector("#character-portrait");
+    this.characterPortraitImg = this.root.querySelector("#character-portrait-img");
+    this.characterName = this.root.querySelector("#character-name");
   }
 
   renderNode(node, { onHotspotClick } = {}) {
@@ -34,6 +41,15 @@ export class Renderer {
     this.sceneText.textContent = node.text || "";
     this.sceneWhisper.textContent = node.whisper || "";
     this.sceneWhisper.classList.toggle("hidden", !node.whisper);
+
+    if (node.character) {
+      this.characterPortrait.classList.remove("hidden");
+      this.characterPortraitImg.src = node.character.portrait;
+      this.characterPortraitImg.alt = node.character.name || "";
+      this.characterName.textContent = node.character.name || "";
+    } else {
+      this.characterPortrait.classList.add("hidden");
+    }
 
     this.hotspotLayer.innerHTML = "";
     (node.hotspots || []).forEach((hotspot) => {
