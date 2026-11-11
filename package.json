@@ -5,7 +5,8 @@
   "description": "La Cabaña — novela interactiva room-escape, motor genérico + capítulos como datos JSON",
   "scripts": {
     "dev": "npx --yes serve . -l 8080",
-    "generate-art": "node scripts/generate-art.js"
+    "generate-art": "node scripts/generate-art.js",
+    "test:despacho": "node --test despacho/tests/*.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

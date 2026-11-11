@@ -1,5 +1,8 @@
 # La Cabaña — novela interactiva room-escape
 
+> Este repo también contiene **`/despacho`**: app web para un despacho jurídico
+> (control de expedientes y términos de acuerdos). Ver [`despacho/README.md`](despacho/README.md).
+
 Motor genérico en HTML/JS vanilla que lee **nodos de escena desde JSON**
 (`/chapters/*.json`); ninguna lógica de escena está hardcodeada en el motor.
 
