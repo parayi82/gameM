@@ -1,7 +1,11 @@
-// Configuración pública del cliente. Rellenar para activar Supabase/Stripe;
-// vacío = el motor cae automáticamente a localStorage (modo standalone/dev).
-window.APP_CONFIG = {
-  SUPABASE_URL: "https://wvpycjxdqckauekmgynw.supabase.co",
-  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2cHljanhkcWNrYXVla21neW53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5NDU3MzEsImV4cCI6MjEwNTUyMTczMX0.DsBmrtSg7zpMy--g549HNyvbfI1l-oVrW0ZCma39Jo4",
-  STRIPE_PUBLISHABLE_KEY: "",
+// Configuración pública del despacho.
+// Con SUPABASE_URL / SUPABASE_ANON_KEY vacíos la app arranca en MODO DEMO
+// (datos solo en este navegador). Para producción use un proyecto de
+// Supabase EXCLUSIVO para el despacho — ver README.md.
+// La "anon key" es pública por diseño: la seguridad la dan RLS + 2FA.
+window.DESPACHO_CONFIG = {
+  NOMBRE_DESPACHO: "Despacho Jurídico",
+  SUPABASE_URL: "",
+  SUPABASE_ANON_KEY: "",
+  MINUTOS_INACTIVIDAD: 20, // cierre automático de sesión
 };
