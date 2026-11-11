@@ -6,14 +6,10 @@
 [functions]
   node_bundler = "esbuild"
 
-# Sitio estático de una sola página (index.html) + funciones bajo
-# /.netlify/functions/*; no se necesita ningún redirect adicional.
-
-# ---- Despacho jurídico (/despacho): encabezados de seguridad estrictos.
-# Solo scripts propios (supabase-js va incluido en /despacho/vendor), solo
-# conexiones a Supabase, sin iframes, sin caché de páginas con datos.
+# Encabezados de seguridad estrictos: solo scripts propios (supabase-js va
+# incluido en /vendor), solo conexiones a Supabase, sin iframes, sin caché.
 [[headers]]
-  for = "/despacho/*"
+  for = "/*"
   [headers.values]
     Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
     X-Frame-Options = "DENY"

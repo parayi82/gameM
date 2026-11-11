@@ -1,146 +1,113 @@
-# La Cabaña — novela interactiva room-escape
+# Despacho — control de expedientes y acuerdos
 
-> Este repo también contiene **`/despacho`**: app web para un despacho jurídico
-> (control de expedientes y términos de acuerdos). Ver [`despacho/README.md`](despacho/README.md).
+App web sencilla para que **no se pase ningún término** y todo quede en orden.
+Acceso **solo para abogados del despacho**, con verificación en dos pasos
+obligatoria.
 
-Motor genérico en HTML/JS vanilla que lee **nodos de escena desde JSON**
-(`/chapters/*.json`); ninguna lógica de escena está hardcodeada en el motor.
+## Qué hace
 
-## Estructura
+- **Agenda de términos**: todos los acuerdos pendientes ordenados por fecha
+  de vencimiento, con semáforo: 🔴 vencido / vence hoy o mañana,
+  🟠 ≤ 3 días hábiles, 🟢 con holgura. Filtro "Mis asuntos" / "Todo el despacho".
+- **Cálculo automático del vencimiento** en días hábiles: excluye sábados,
+  domingos y los días inhábiles registrados; opción de que la notificación
+  surta efectos al día hábil siguiente (regla general). Muestra el cálculo
+  antes de guardar para que el abogado lo confirme.
+- **Expedientes**: número, juzgado, cliente, contraparte, materia,
+  responsable; cada uno con su historial de acuerdos.
+- **Marcar atendido** exige escribir qué se hizo (ej. "escrito presentado,
+  folio 4587"); queda con fecha, hora y quién lo marcó.
+- **Recordatorio diario por correo** (lun–vie 7:00 CDMX) a cada abogado con
+  sus términos vencidos o próximos a vencer.
+- **Bitácora inalterable**: cada alta, cambio o baja queda registrada (quién,
+  cuándo, qué cambió). Nadie, ni el administrador, puede borrarla.
+- **Exportar a CSV** (respaldo / Excel).
 
-```
-/engine/          motor genérico (estado, timer, acciones, render, orquestador)
-/chapters/        manifest.json + un JSON por capítulo (datos, no código)
-/assets/          fondos e iconos (placeholders SVG hasta correr el pipeline de arte)
-/supabase/        schema.sql + notas de setup
-/netlify/functions/  Stripe Checkout + webhook (paywall por capítulo)
-/scripts/         pipeline offline de generación de arte (Nano Banana)
-index.html, style.css, config.js   shell de la app + configuración pública
-```
+## Seguridad
 
-## Cómo jugar en local
+| Medida | Cómo |
+|---|---|
+| Solo abogados autorizados | No hay registro público: se invita desde Supabase y un admin activa la cuenta. |
+| Doble factor obligatorio | Sin código de app autenticadora (TOTP) la base de datos no entrega **nada** (regla `aal2` en RLS). |
+| Protección en la base de datos | Row Level Security de Postgres: aunque alguien tenga la URL y la llave pública, no puede leer ni escribir. Prueba en `tests/rls.sql`. |
+| Retiro de acceso inmediato | Al desactivar a un abogado deja de ver la información en su siguiente consulta. |
+| Sesión corta | Cierre automático tras 20 min sin actividad; la sesión muere al cerrar el navegador. |
+| Sin borrados accidentales | Solo un admin puede borrar; un admin no puede quitarse su propio rol. |
+| Navegador blindado | CSP estricta, sin scripts externos (supabase-js va incluido), sin iframes, sin caché, `noindex`. |
+| Cifrado | HTTPS (Netlify) y cifrado en reposo (Supabase). |
 
-```bash
-npm run dev     # sirve el directorio en http://localhost:8080
-```
+## Instalación (una sola vez, ~20 minutos)
 
-Sin configurar Supabase/Stripe, el juego funciona igual: el progreso se
-guarda en `localStorage` y los capítulos marcados `"free": true` en
-`chapters/manifest.json` se juegan sin paywall (capítulos 1 y 2).
+### 1. Base de datos (Supabase)
+1. Crear un proyecto **nuevo y exclusivo** en <https://supabase.com>
+   (región más cercana, ej. `us-east`).
+2. *SQL Editor* → pegar y ejecutar todo `supabase/schema.sql`.
+3. *Authentication → Sign In / Providers → Email*: **desactivar
+   "Allow new users to sign up"**. Activar "Confirm email".
+4. *Authentication → Multi-Factor*: verificar que **TOTP** esté habilitado.
+5. *Authentication → URL Configuration*: Site URL =
+   `https://<su-sitio>.netlify.app/`, y agregarla también en
+   Redirect URLs.
+6. *Authentication → Users → Add user → Create new user*: crear la cuenta
+   del **socio administrador** (el primer usuario queda como admin activo).
+7. *Project Settings → API*: copiar `Project URL` y la llave `anon public`
+   a `config.js`. (La llave anon es pública por diseño; la
+   `service_role` **jamás** va en el navegador.)
 
-## Modelo de datos de un nodo
+### 2. Publicar (Netlify)
+El repo ya está configurado (`netlify.toml`). La app queda en la raíz del sitio:
+`https://<su-sitio>.netlify.app/`.
 
-Cada nodo = fondo + texto + hotspots. El motor resuelve las acciones de
-hotspot **por tipo**, nunca por id de escena:
+### 3. Recordatorios por correo (opcional, recomendado)
+1. Crear cuenta en <https://resend.com>, verificar el dominio del despacho.
+2. En Netlify → *Site configuration → Environment variables*:
 
-- `reveal_item` — revela un ítem al inventario
-- `set_flag` — marca una bandera de estado (puede detener el timer con `stopsTimer`)
-- `requires_item` — exige un ítem en inventario; `onSuccess`/`onFail` como
-  `"next_node:ID"` o `"text:mensaje"`
-- `requires_flag` — igual pero contra una bandera (usado para gatear el
-  final verdadero)
-- `goto` — navegación directa incondicional
+   | Variable | Valor |
+   |---|---|
+   | `DESPACHO_SUPABASE_URL` | Project URL |
+   | `DESPACHO_SUPABASE_SERVICE_ROLE_KEY` | llave `service_role` (secreta) |
+   | `RESEND_API_KEY` | API key de Resend |
+   | `DESPACHO_EMAIL_REMITENTE` | `Agenda <agenda@sudespacho.mx>` |
+   | `DESPACHO_URL` | `https://<su-sitio>.netlify.app/` |
+   | `DESPACHO_DIAS_AVISO` | días naturales de anticipación (default 5) |
 
-Ver `chapters/ch1.json` para el capítulo de referencia completo (cajón →
-llave → puerta, con timer de tensión por la ventana, y 4 finales:
-trágico ×2, agridulce, verdadero).
+### 4. Dar de alta abogados
+1. Supabase → *Authentication → Users → Invite user* → correo del abogado.
+2. El abogado abre el enlace, define su contraseña (mín. 12 caracteres) y
+   activa la verificación en dos pasos con su celular.
+3. El admin entra a **Equipo** y pulsa **Activar**.
 
-## Minijuego: búsqueda a contrarreloj
+## Uso diario
+1. Al revisar el boletín / lista de acuerdos: **+ Registrar acuerdo**,
+   elegir expediente, fecha de notificación, síntesis y días de término.
+2. Revisar la **Agenda** cada mañana (y el correo de recordatorio).
+3. Al presentar la promoción: **Marcar atendido** con la nota de lo hecho.
+4. Mantener actualizados los **Días inhábiles** (vacaciones judiciales,
+   suspensiones). Vienen precargados los festivos de 2026–2027.
 
-Un nodo con `"type": "minigame"` se resuelve con una rama de motor separada
-(`GameEngine._handleMinigameHotspot`), pero por **tipo de nodo**, no por
-escena — el patrón es el mismo que `actions.js`. Estructura:
+> El cálculo de términos es una ayuda: siempre verifique contra la ley
+> procesal y el calendario oficial del tribunal correspondiente.
 
-```json
-{
-  "type": "minigame",
-  "timer": { "seconds": 20, "onExpire": "nodo_si_se_acaba_el_tiempo" },
-  "minigame": {
-    "pointsPerFind": 10,
-    "timeBonusPerSecond": 2,
-    "decoyPenalty": 5,
-    "onComplete": "nodo_si_encuentra_todo"
-  },
-  "hotspots": [
-    { "id": "pista_1", "coords": [x, y, w, h], "kind": "target" },
-    { "id": "trasto_1", "coords": [x, y, w, h], "kind": "decoy" }
-  ]
-}
-```
-
-Cada hotspot es `"target"` (suma puntos, cuenta para completar) o `"decoy"`
-(resta puntos, no cuenta). Al encontrar todos los targets se suma un bono
-por segundos restantes y se avanza a `minigame.onComplete`; si se acaba el
-tiempo primero, avanza a `timer.onExpire` con el puntaje parcial ya sumado.
-Ver `minigame_pasillo` en `chapters/ch1.json` (entre `cabana_intro` y
-`pasillo_ch2`: 3 pistas ocultas entre trastos, 20 segundos).
-
-El puntaje (`state.score`) se persiste junto al resto del progreso — en
-Supabase requiere la columna `score` en `progress`
-(`supabase/migrations/002_add_score.sql` si ya corriste el schema base).
-
-## Personajes, sonido y animación
-
-- **Retrato de personaje**: campo opcional `node.character = {name, portrait}`.
-  Se muestra junto al texto (pensamientos/diálogo de la protagonista), con
-  una animación de entrada y un leve movimiento idle en CSS.
-- **Sonido**: sintetizado en runtime con Web Audio API (`engine/audio.js`) —
-  sin archivos de audio que mantener. El motor elige el sonido **por tipo de
-  acción/resultado** (recoger ítem, click, fallo, desbloqueo, final) igual
-  que resuelve la lógica en `actions.js`. Sonido ambiente por nodo vía
-  `node.ambient` (`"wind"`, `"hum"` o ausente = silencio); se activa con el
-  primer gesto del usuario (política de autoplay de los navegadores) y se
-  puede silenciar con el botón "Sonido" en pantalla.
-- **Animación**: transición de fundido entre fondos, texto que entra con
-  fade, vignette pulsante cuando el timer baja de 10s, y feedback visual en
-  los hotspots al hacer click — todo CSS, sin librerías.
-
-## Ramificación y finales
-
-- Los nodos marcados `"decisionPoint": true` guardan un snapshot de
-  flags/inventario. Al llegar a un final, el jugador puede **rebobinar a la
-  última decisión** en vez de reiniciar el capítulo completo.
-- Cada capítulo declara sus finales en `endings` (`tragico` / `agridulce` /
-  `verdadero`) y la pantalla de final muestra "X de Y finales desbloqueados".
-
-## Supabase
-
-Ver `supabase/README.md`. Tablas: `progress` (nodo actual, flags,
-inventario, finales, último punto de decisión) y `purchases` (solo
-escrita por el webhook de Stripe). Con `SUPABASE_URL`/`SUPABASE_ANON_KEY`
-vacíos en `config.js`, el motor cae automáticamente a `localStorage`.
-
-## Paywall (Stripe)
-
-Modelo elegido para el MVP: **compra por capítulo individual** (no
-suscripción) — capítulos 1-2 gratis, el resto de pago, precio en
-`chapters/manifest.json` (`priceUSD`). `netlify/functions/create-checkout-session.js`
-crea la Stripe Checkout Session; `stripe-webhook.js` confirma el pago y
-registra la compra en Supabase. Variables de entorno necesarias en
-Netlify: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_URL`, `SITE_URL`.
-
-Una suscripción mensual puede añadirse después como un segundo modo de
-Checkout sin tocar el motor del juego.
-
-## Pipeline de arte (Nano Banana)
-
-Offline, separado del motor — nunca se llama en runtime:
+## Probar sin instalar nada
+Con `SUPABASE_URL` vacío en `config.js` la app arranca en **modo
+demostración** (datos de ejemplo guardados solo en el navegador):
 
 ```bash
-GEMINI_API_KEY=... node scripts/generate-art.js
+npm run dev   # y abrir http://localhost:8080/
 ```
 
-Lee `scripts/art-manifest.json` (prompt + ruta de salida por asset) y
-genera PNGs con `gemini-3.1-flash-image-preview`. Los assets actuales en
-`/assets` son placeholders SVG generados localmente para poder probar el
-motor sin depender de la API; al reemplazarlos por PNGs reales, actualizar
-las extensiones referenciadas en `chapters/*.json`.
+## Pruebas
+```bash
+npm test
+```
 
-## Despliegue (Netlify)
-
-1. Conectar el repo en Netlify (publish dir: `.`, functions dir:
-   `netlify/functions` — ya configurado en `netlify.toml`)
-2. Configurar las variables de entorno listadas arriba
-3. En Stripe, apuntar el webhook `checkout.session.completed` a
-   `https://<tu-sitio>.netlify.app/.netlify/functions/stripe-webhook`
+## Archivos
+```
+index.html, app.js, style.css   interfaz
+plazos.js                        cálculo de días hábiles (probado)
+data.js                          acceso a datos (Supabase / demo)
+config.js                        configuración pública
+vendor/                          supabase-js 2.45.4 (sin CDN)
+supabase/schema.sql              tablas, RLS, triggers, bitácora
+netlify/functions/despacho-recordatorios.mjs   correo diario
+```
