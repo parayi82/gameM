@@ -6,7 +6,8 @@
   "description": "Despacho jurídico — control de expedientes y términos de acuerdos",
   "scripts": {
     "dev": "npx --yes serve . -l 8080",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:ia": "deno test --node-modules-dir=none --allow-net --allow-env tests/ia.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

@@ -56,7 +56,51 @@ export class SupabaseDatos {
   async bitacora() {
     return revisar(await this.sb.from("bitacora").select("*").order("at", { ascending: false }).limit(300));
   }
+
+  // ---------------------------------------------- documentos, IA y escritos
+  async documentos(expId) {
+    return revisar(await this.sb.from("documentos").select("*").eq("expediente_id", expId).order("creado_at", { ascending: false }));
+  }
+  async subirDocumento(expId, archivo) {
+    const limpio = archivo.name.normalize("NFD").replace(/[^\w.\-]+/g, "_").slice(-80);
+    const ruta = `${expId}/${crypto.randomUUID()}-${limpio}`;
+    const { error } = await this.sb.storage.from("expedientes").upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+    if (error) throw new Error(`No se pudo subir ${archivo.name}: ${error.message}`);
+    return revisar(await this.sb.from("documentos").insert({
+      expediente_id: expId, nombre: archivo.name, ruta, mime: archivo.type, tamano: archivo.size,
+    }).select().single());
+  }
+  async urlDocumento(doc) {
+    const { data, error } = await this.sb.storage.from("expedientes").createSignedUrl(doc.ruta, 300);
+    if (error) throw new Error(error.message);
+    return data.signedUrl;
+  }
+  async ultimoAnalisis(expId) {
+    return revisar(await this.sb.from("analisis").select("*").eq("expediente_id", expId)
+      .order("creado_at", { ascending: false }).limit(1).maybeSingle());
+  }
+  async escritos(expId) {
+    return revisar(await this.sb.from("escritos").select("*").eq("expediente_id", expId).order("creado_at", { ascending: false }));
+  }
+  async escrito(id) {
+    return revisar(await this.sb.from("escritos").select("*").eq("id", id).single());
+  }
+  async guardarEscrito(e) {
+    const { id, ...campos } = e;
+    return revisar(await this.sb.from("escritos").update(campos).eq("id", id).select().single());
+  }
+  /** Llama a la función de IA del servidor (la llave de Anthropic nunca llega al navegador). */
+  async ia(accion, params) {
+    const { data, error } = await this.sb.functions.invoke("ia", { body: { accion, ...params } });
+    if (error) {
+      let msg = error.message;
+      try { msg = (await error.context.json()).error || msg; } catch { /* sin cuerpo JSON */ }
+      throw new Error(msg);
+    }
+    return data;
+  }
 }
+
 
 // ------------------------------------------------------------------ demo
 const CLAVE = "despacho_demo_v1";
@@ -118,7 +162,7 @@ export class DemoDatos {
     this.db.bitacora = this.db.bitacora.slice(0, 300);
   }
   _upsert(tabla, obj) {
-    const lista = this.db[tabla];
+    const lista = (this.db[tabla] ||= []);
     const ahora = new Date().toISOString();
     if (obj.id) {
       const i = lista.findIndex((x) => x.id === obj.id);
@@ -131,6 +175,7 @@ export class DemoDatos {
           despues.atendido_por = null; despues.atendido_at = null;
         }
       }
+      if (tabla === "documentos" && !antes) return;
       lista[i] = despues;
       this._log(tabla, obj.id, "UPDATE", antes, despues);
     } else {
@@ -175,6 +220,91 @@ export class DemoDatos {
     this._guardar();
   }
   async bitacora() { return structuredClone(this.db.bitacora); }
+  // ------------------------------------------- documentos, IA y escritos (demo)
+  _tabla(n) { return (this.db[n] ||= []); }
+  async documentos(expId) { return this._tabla("documentos").filter((d) => d.expediente_id === expId).reverse(); }
+  async subirDocumento(expId, archivo) {
+    (this.archivos ||= new Map());
+    const doc = { expediente_id: expId, nombre: archivo.name, ruta: `demo/${archivo.name}`, mime: archivo.type, tamano: archivo.size, estado_ia: "sin_procesar", extraccion: null, error_ia: "" };
+    this._upsert("documentos", doc);
+    const nuevo = this._tabla("documentos").at(-1);
+    this.archivos.set(nuevo.id, URL.createObjectURL(archivo));
+    return nuevo;
+  }
+  async urlDocumento(doc) {
+    const url = this.archivos?.get(doc.id);
+    if (!url) throw new Error("En modo demo los archivos solo se pueden ver en la sesión en que se subieron.");
+    return url;
+  }
+  async ultimoAnalisis(expId) { return this._tabla("analisis").filter((a) => a.expediente_id === expId).at(-1) || null; }
+  async escritos(expId) { return this._tabla("escritos").filter((e) => e.expediente_id === expId).reverse(); }
+  async escrito(id) { return structuredClone(this._tabla("escritos").find((e) => e.id === id)); }
+  async guardarEscrito(e) {
+    const antes = this._tabla("escritos").find((x) => x.id === e.id);
+    if (["aprobado", "presentado"].includes(antes.estado) && (e.estado ?? antes.estado) === antes.estado && "contenido" in e && e.contenido !== antes.contenido) {
+      throw new Error("El escrito ya tiene visto bueno; regréselo a borrador para modificarlo");
+    }
+    const cambios = { ...e };
+    if (e.estado === "aprobado" && antes.estado !== "aprobado") Object.assign(cambios, { aprobado_por: DEMO_USUARIO.id, aprobado_at: new Date().toISOString() });
+    if (e.estado === "borrador") Object.assign(cambios, { aprobado_por: null, aprobado_at: null, presentado_at: null });
+    this._upsert("escritos", cambios);
+    return this.escrito(e.id);
+  }
+  /** Respuestas de ejemplo: en demo no se llama a ninguna IA. */
+  async ia(accion, p) {
+    await new Promise((r) => setTimeout(r, 700));
+    const hoy = hoyISO();
+    if (accion === "extraer") {
+      const extraccion = {
+        tipo_documento: "acuerdo", legible: true,
+        resumen: "(EJEMPLO DE DEMOSTRACIÓN) Acuerdo que tiene por contestada la demanda y da vista a la actora.",
+        expediente: { numero: "", juzgado: "", materia: "Civil", tipo_juicio: "Ordinario civil", actor: "", demandado: "" },
+        acuerdos: [{
+          fecha_acuerdo: hoy, fecha_publicacion: hoy, fecha_notificacion: hoy,
+          sintesis: "Se tiene por contestada la demanda en tiempo; se da vista a la parte actora por tres días para que manifieste lo que a su derecho convenga.",
+          texto_relevante: "…con el escrito de cuenta se tiene por contestada la demanda…", dias_termino: 3, tipo_dias: "habiles",
+          a_cargo_de_nuestro_cliente: true, accion_requerida: "Desahogar la vista", confianza: "alta",
+        }],
+        observaciones: "Ejemplo generado sin IA (modo demostración).",
+      };
+      this._upsert("documentos", { id: p.documento_id, estado_ia: "procesado", extraccion });
+      return { extraccion };
+    }
+    if (accion === "analizar") {
+      const resultado = {
+        tipo_juicio: "Ordinario civil", legislacion_aplicable: ["Código de Procedimientos Civiles local [VERIFICAR]"],
+        etapa_actual: "Fijación de la litis (contestación y vista)", explicacion_etapa: "(EJEMPLO) La demanda fue contestada y corre la vista a la actora.",
+        etapas: [
+          { nombre: "Demanda y admisión", estado: "concluida" }, { nombre: "Emplazamiento", estado: "concluida" },
+          { nombre: "Contestación y vista", estado: "actual" }, { nombre: "Pruebas", estado: "pendiente" },
+          { nombre: "Alegatos", estado: "pendiente" }, { nombre: "Sentencia", estado: "pendiente" },
+        ],
+        ultimo_acontecimiento: "Acuerdo que da vista con la contestación.", siguiente_paso: "Desahogar la vista dentro del término.",
+        acciones: [{ prioridad: "urgente", accion: "Desahogar la vista con la contestación", fundamento: "[VERIFICAR]", fecha_limite: "", escrito_sugerido: "Desahogo de vista" }],
+        riesgos: ["Preclusión del derecho a desahogar la vista"], datos_faltantes: ["Copia de la contestación de demanda"],
+      };
+      const analisis = { expediente_id: p.expediente_id, resultado, modelo: "demo" };
+      this._upsert("analisis", analisis);
+      this._upsert("expedientes", { id: p.expediente_id, etapa: resultado.etapa_actual });
+      return { analisis: this._tabla("analisis").at(-1) };
+    }
+    if (accion === "redactar") {
+      const exp = this.db.expedientes.find((e) => e.id === p.expediente_id) || {};
+      const contenido = [
+        `EXPEDIENTE: ${exp.numero}\n${(p.tipo_escrito || "").toUpperCase()}`,
+        `C. JUEZ ${String(exp.juzgado || "").toUpperCase()}\nP R E S E N T E`,
+        "[COMPLETAR: nombre del promovente], en mi carácter de [COMPLETAR], ante Usted con el debido respeto comparezco para exponer:",
+        "(EJEMPLO DE DEMOSTRACIÓN — en producción este texto lo redacta la IA con base en el expediente.)",
+        "Por lo anteriormente expuesto, a Usted C. Juez, atentamente pido:\n\nPRIMERO.- Tenerme por presentado en los términos de este escrito.",
+        "PROTESTO LO NECESARIO\n[COMPLETAR: lugar], a [COMPLETAR: fecha]\n\n\n______________________________\n[COMPLETAR: nombre y firma]",
+      ].join("\n\n");
+      this._upsert("escritos", { expediente_id: p.expediente_id, acuerdo_id: p.acuerdo_id || null, titulo: p.tipo_escrito, contenido, estado: "borrador", generado_ia: true,
+        notas_ia: { fundamentos: [], datos_por_completar: ["Nombre del promovente", "Lugar y fecha"], notas: "Ejemplo de demostración." } });
+      return { escrito: this._tabla("escritos").at(-1) };
+    }
+    throw new Error("Acción desconocida");
+  }
+
   reiniciar() {
     this.db = semilla();
     this._guardar();
