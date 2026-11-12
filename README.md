@@ -1,4 +1,4 @@
-# Despacho — control de expedientes y acuerdos
+# Lexpress — control de expedientes, acuerdos y escritos
 
 App web sencilla para que **no se pase ningún término** y todo quede en orden.
 Acceso **solo para abogados del despacho**, con verificación en dos pasos
@@ -22,6 +22,52 @@ obligatoria.
 - **Bitácora inalterable**: cada alta, cambio o baja queda registrada (quién,
   cuándo, qué cambió). Nadie, ni el administrador, puede borrarla.
 - **Exportar a CSV** (respaldo / Excel).
+
+## Asistente con IA (documentos, etapa del juicio y escritos)
+
+Dentro de cada expediente:
+
+1. **Documentos escaneados** — suba PDF o fotos (acuerdos, demanda,
+   contestación…). Se guardan cifrados en un almacenamiento **privado**.
+2. **Lectura automática** — al subirlos, la IA (agente *lector*) lee el
+   documento y **propone** los acuerdos con sus fechas, término y acción
+   requerida. El abogado compara contra el original y pulsa *Registrar este
+   acuerdo*: el vencimiento lo calcula la app con los días inhábiles.
+3. **Análisis del juicio** — el agente *analista procesal* revisa acuerdos y
+   documentos y determina tipo de juicio, etapa actual, mapa de etapas,
+   siguiente paso, acciones priorizadas, riesgos y qué escrito corresponde.
+4. **Escritos** — el agente *redactor* elabora el borrador completo (rubro,
+   proemio, cuerpo, fundamentos, petitorios). Marca con `[COMPLETAR]` lo que
+   falta y con `[VERIFICAR]` las citas dudosas.
+5. **Visto bueno** — el abogado revisa y edita. No se puede dar visto bueno
+   mientras quede algún `[COMPLETAR]`. Con visto bueno el texto queda
+   bloqueado (para corregirlo hay que regresarlo a borrador, y queda en
+   bitácora). Después: **Imprimir**, **Descargar Word**, firmar, presentar y
+   **Marcar presentado**.
+
+La IA **nunca** registra acuerdos ni presenta nada por sí sola: todo pasa por
+el abogado. Los documentos se envían a la API de Anthropic solo cuando se pide
+leer, analizar o redactar; Anthropic no usa los datos de la API para entrenar
+sus modelos.
+
+### Instalación de la IA (una sola vez)
+
+1. **Tablas y almacenamiento**: Supabase → *SQL Editor* → pegar y ejecutar
+   todo `supabase/002_documentos_ia.sql`.
+2. **Llave de Anthropic**: en <https://platform.claude.com> → *API Keys* →
+   *Create Key* (requiere método de pago). En Supabase → *Edge Functions* →
+   *Secrets* → agregar `ANTHROPIC_API_KEY` con esa llave. **Nunca** se pone en
+   `config.js` ni en el repositorio.
+3. **Función**: Supabase → *Edge Functions* → *Deploy a new function* → *Via
+   Editor* → nombre **`ia`** → borrar el ejemplo, pegar todo
+   `supabase/functions/ia/index.ts` → *Deploy*. (Con la CLI:
+   `supabase functions deploy ia`.) Deje activada la verificación de JWT.
+
+Modelo: Claude Opus 5.5 (`claude-opus-5-5`), con respaldo automático del
+servidor si el modelo declina una solicitud. Costo estimado (depende del
+número de páginas): ≈ 0.10–0.30 USD por documento leído y ≈ 0.50–1.50 USD
+por análisis o escrito, porque estos releen hasta 6 documentos recientes del
+expediente. Revise el consumo real en platform.claude.com → *Usage*.
 
 ## Seguridad
 
@@ -98,7 +144,11 @@ npm run dev   # y abrir http://localhost:8080/
 
 ## Pruebas
 ```bash
-npm test
+npm test          # cálculo de plazos
+npm run test:ia   # función de IA con Supabase y Claude simulados (requiere Deno)
+# permisos (RLS) en un Postgres local:
+#   psql -d prueba -f tests/supabase-stub.sql -f supabase/schema.sql \
+#        -f supabase/002_documentos_ia.sql -f tests/rls.sql -f tests/rls-ia.sql
 ```
 
 ## Archivos
@@ -109,5 +159,7 @@ data.js                          acceso a datos (Supabase / demo)
 config.js                        configuración pública
 vendor/                          supabase-js 2.45.4 (sin CDN)
 supabase/schema.sql              tablas, RLS, triggers, bitácora
+supabase/002_documentos_ia.sql   documentos, análisis, escritos y almacenamiento
+supabase/functions/ia/index.ts   agentes de IA (lector, analista, redactor)
 netlify/functions/despacho-recordatorios.mjs   correo diario
 ```

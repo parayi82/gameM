@@ -63,6 +63,7 @@ const S = {
   datos: null, sb: null, perfil: null,
   abogados: [], expedientes: [], acuerdos: [], inhabiles: [], inhSet: new Set(),
   vista: "agenda", filtro: "mios", busqueda: "", verAtendidos: false, expedienteSel: null,
+  detalle: null, escritoSel: null,
 };
 
 const nombreAbogado = (id) => {
@@ -268,7 +269,7 @@ function render() {
 
   const cuerpo = {
     agenda: vistaAgenda, expedientes: vistaExpedientes, inhabiles: vistaInhabiles,
-    equipo: vistaEquipo, bitacora: vistaBitacora, expediente: vistaDetalleExpediente,
+    equipo: vistaEquipo, bitacora: vistaBitacora, expediente: vistaDetalleExpediente, escrito: vistaEscrito,
   }[S.vista]();
 
   raiz.replaceChildren(
@@ -279,7 +280,7 @@ function render() {
       h("div", { class: "marca" }, h("span", { class: "sello" }, "§"), CFG.NOMBRE_DESPACHO || "Despacho"),
       h("nav", {}, pestañas.map(([id, txt]) =>
         h("button", {
-          class: `tab ${S.vista === id || (id === "expedientes" && S.vista === "expediente") ? "activa" : ""}`,
+          class: `tab ${S.vista === id || (id === "expedientes" && ["expediente", "escrito"].includes(S.vista)) ? "activa" : ""}`,
           onclick: () => { S.vista = id; render(); },
         }, txt, id === "agenda" && urgentes ? h("span", { class: "insignia", title: "Vencidos o vencen hoy" }, urgentes) : null))),
       h("div", { class: "usuario" },
@@ -353,11 +354,12 @@ function tablaAcuerdos(lista, conExpediente) {
           h("div", {}, h("strong", {}, fmt(a.fecha_vencimiento)),
             h("div", { class: "tenue chico" }, atendido ? `Atendido ${fmtHora(a.atendido_at)}` : describirRestante(hoy, a.fecha_vencimiento, S.inhSet))))),
         conExpediente && h("td", {},
-          h("button", { class: "btn-link", onclick: () => { S.expedienteSel = e.id; S.vista = "expediente"; render(); } }, e.numero || "—"),
+          h("button", { class: "btn-link", onclick: () => abrirExpediente(e.id) }, e.numero || "—"),
           h("div", { class: "tenue chico" }, e.cliente), h("div", { class: "tenue chico" }, e.juzgado)),
         h("td", {}, a.descripcion,
           h("div", { class: "tenue chico" }, `Notificado ${fmt(a.fecha_notificacion)}`, a.dias_termino ? ` · término ${a.dias_termino} días hábiles` : ""),
-          a.nota_atencion && h("div", { class: "nota" }, "✔ ", a.nota_atencion)),
+          a.nota_atencion && h("div", { class: "nota" }, "✔ ", a.nota_atencion),
+          a.documento_id && h("button", { class: "btn-link chico", onclick: () => abrirDocumento({ id: a.documento_id }) }, "📎 Ver documento escaneado")),
         h("td", {}, nombreAbogado(a.responsable_id)),
         h("td", {}, h("div", { class: "acciones-fila" },
           atendido
@@ -402,7 +404,7 @@ function formAcuerdo(a = {}, expedienteFijo) {
     h("option", { value: "dias" }, "Término en días hábiles"),
     h("option", { value: "fecha" }, "Fecha límite específica"),
     h("option", { value: "ninguno" }, "Sin término (informativo)"));
-  modo.value = a.id ? (a.dias_termino ? "dias" : a.fecha_vencimiento ? "fecha" : "ninguno") : "dias";
+  modo.value = a.id ? (a.dias_termino ? "dias" : a.fecha_vencimiento ? "fecha" : "ninguno") : (a.modo || "dias");
   const dias = h("input", { type: "number", min: 1, max: 365, value: a.dias_termino || 3 });
   const surte = h("input", { type: "checkbox", checked: a.id ? a.surte_efectos !== false : true });
   const fechaFija = h("input", { type: "date", value: a.fecha_vencimiento || "" });
@@ -443,6 +445,7 @@ function formAcuerdo(a = {}, expedienteFijo) {
   actualizar();
 
   modal(a.id ? "Editar acuerdo" : "Registrar acuerdo", [
+    a.propuestoIA && h("div", { class: "aviso-ia" }, "Datos propuestos por la IA a partir del documento. Verifíquelos contra el original antes de guardar."),
     h("label", {}, "Expediente", exp),
     h("div", { class: "fila" }, h("label", {}, "Fecha de publicación", pub), h("label", {}, "Fecha de notificación", notif)),
     h("label", {}, "Acuerdo", desc),
@@ -466,7 +469,9 @@ function formAcuerdo(a = {}, expedienteFijo) {
       surte_efectos: surte.checked,
       fecha_vencimiento: v,
       responsable_id: resp.value || null,
+      ...(a.documento_id ? { documento_id: a.documento_id } : {}),
     });
+    if (S.vista === "expediente") cargarDetalle(exp.value);
   }, a.id ? "Acuerdo actualizado" : "Acuerdo registrado");
 }
 
@@ -505,7 +510,7 @@ function vistaExpedientes() {
       h("tbody", {}, lista.map((e) => {
         const p = pendientesDe(e.id);
         const peor = p.map((a) => semaforo(hoyISO(), a.fecha_vencimiento, S.inhSet)).sort((x, y) => ["rojo", "ambar", "verde", "gris"].indexOf(x) - ["rojo", "ambar", "verde", "gris"].indexOf(y))[0];
-        return h("tr", { class: "clic", onclick: () => { S.expedienteSel = e.id; S.vista = "expediente"; render(); } },
+        return h("tr", { class: "clic", onclick: () => abrirExpediente(e.id) },
           h("td", {}, h("strong", {}, e.numero)), h("td", {}, e.juzgado), h("td", {}, e.cliente), h("td", {}, e.materia),
           h("td", {}, nombreAbogado(e.responsable_id)),
           h("td", {}, p.length ? [h("span", { class: `punto punto-${peor}` }), p.length] : "—"),
@@ -514,11 +519,62 @@ function vistaExpedientes() {
   ];
 }
 
+// ------------------------------------------------- detalle de expediente
+function abrirExpediente(id) {
+  S.expedienteSel = id;
+  S.vista = "expediente";
+  S.detalle = null;
+  render();
+  cargarDetalle(id);
+}
+
+async function cargarDetalle(id) {
+  try {
+    const [documentos, escritos, analisis] = await Promise.all([
+      S.datos.documentos(id), S.datos.escritos(id), S.datos.ultimoAnalisis(id),
+    ]);
+    if (S.expedienteSel !== id) return;
+    S.detalle = { documentos, escritos, analisis };
+  } catch (e) {
+    S.detalle = { documentos: [], escritos: [], analisis: null, error: e.message };
+  }
+  if (S.vista === "expediente") render();
+}
+
+/** Ventana de espera mientras trabaja la IA (no se puede cerrar a medias). */
+async function conCargando(mensaje, fn) {
+  const dlg = h("dialog", { class: "modal cargando-ia" },
+    h("div", { class: "cargando-cuerpo" }, h("div", { class: "spinner" }), h("p", {}, mensaje),
+      h("p", { class: "tenue chico" }, "Puede tardar de 30 segundos a 2 minutos. No cierre esta ventana.")));
+  dlg.addEventListener("cancel", (e) => e.preventDefault());
+  document.body.append(dlg);
+  dlg.showModal();
+  try {
+    return await fn();
+  } finally {
+    dlg.close();
+    dlg.remove();
+  }
+}
+
+async function abrirDocumento(doc) {
+  // Se abre la ventana antes de pedir el enlace para que el navegador no la bloquee.
+  const w = window.open("", "_blank");
+  try {
+    const url = await S.datos.urlDocumento(doc);
+    if (w) w.location.href = url; else location.href = url;
+  } catch (e) {
+    if (w) w.close();
+    aviso(e.message, "error");
+  }
+}
+
 function vistaDetalleExpediente() {
   const e = expediente(S.expedienteSel);
   if (!e) { S.vista = "expedientes"; return vistaExpedientes(); }
   const acs = S.acuerdos.filter((a) => a.expediente_id === e.id)
     .sort((x, y) => (x.estado === y.estado ? 0 : x.estado === "pendiente" ? -1 : 1) || (y.fecha_notificacion || "").localeCompare(x.fecha_notificacion || ""));
+  const d = S.detalle;
   return [
     h("button", { class: "btn-link", onclick: () => { S.vista = "expedientes"; render(); } }, "← Expedientes"),
     h("div", { class: "encabezado" },
@@ -527,12 +583,335 @@ function vistaDetalleExpediente() {
         h("button", { class: "btn", onclick: () => formExpediente(e) }, "Editar"),
         h("button", { class: "btn btn-primario", onclick: () => formAcuerdo({}, e.id) }, "+ Registrar acuerdo"))),
     h("dl", { class: "ficha" },
-      ...[["Juzgado", e.juzgado], ["Materia", e.materia], ["Cliente", e.cliente], ["Contraparte", e.contraparte],
+      ...[["Juzgado", e.juzgado], ["Materia", e.materia], ["Tipo de juicio", e.tipo_juicio], ["Cliente", e.cliente],
+        ["Representamos a", e.representa], ["Contraparte", e.contraparte], ["Etapa", e.etapa],
         ["Responsable", nombreAbogado(e.responsable_id)], ["Estado", e.estado], ["Notas", e.notas]]
         .flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v || "—")])),
+    d?.error && h("p", { class: "error" }, d.error),
+    seccionAnalisis(e, d),
     h("h2", {}, "Acuerdos"),
-    acs.length ? tablaAcuerdos(acs, false) : h("p", { class: "vacio" }, "Sin acuerdos registrados."),
+    acs.length ? tablaAcuerdos(acs, false) : h("p", { class: "vacio" }, "Sin acuerdos registrados. Suba el acuerdo escaneado y la IA le propondrá los datos."),
+    seccionDocumentos(e, d),
+    seccionEscritos(e, d),
   ];
+}
+
+// ------------------------------------------------------------ análisis IA
+function seccionAnalisis(e, d) {
+  const an = d?.analisis;
+  const r = an?.resultado;
+  const boton = h("button", { class: "btn btn-ia", disabled: !d, onclick: () => analizar(e) }, r ? "↻ Volver a analizar" : "✦ Analizar etapa y siguiente paso");
+  if (!r) {
+    return h("section", { class: "panel-ia" },
+      h("div", { class: "panel-cab" }, h("h2", {}, "Análisis del juicio"), boton),
+      h("p", { class: "tenue" }, d ? "La IA revisa los acuerdos y documentos del expediente, determina en qué etapa va el juicio, qué sigue y qué escrito corresponde." : "Cargando…"));
+  }
+  const prioridad = { urgente: "rojo", alta: "ambar", normal: "neutro" };
+  return h("section", { class: "panel-ia" },
+    h("div", { class: "panel-cab" },
+      h("div", {}, h("h2", {}, "Análisis del juicio"),
+        h("div", { class: "tenue chico" }, `Generado por IA el ${fmtHora(an.creado_at)} — es una propuesta: verifíquela.`)),
+      boton),
+    h("div", { class: "etapa-actual" }, h("span", { class: "tenue chico" }, "Etapa actual"), h("strong", {}, r.etapa_actual), h("p", {}, r.explicacion_etapa)),
+    r.etapas?.length > 0 && h("ol", { class: "linea-etapas" }, r.etapas.map((x) => h("li", { class: `etapa-${x.estado}` }, x.nombre))),
+    h("div", { class: "rejilla-2" },
+      h("div", {}, h("h3", {}, "Último acontecimiento"), h("p", {}, r.ultimo_acontecimiento || "—")),
+      h("div", {}, h("h3", {}, "Siguiente paso"), h("p", {}, h("strong", {}, r.siguiente_paso || "—")))),
+    r.acciones?.length > 0 && [h("h3", {}, "Acciones a realizar"),
+      h("ul", { class: "acciones-ia" }, r.acciones.map((x) => h("li", {},
+        h("span", { class: `etiqueta etiqueta-${prioridad[x.prioridad] || "neutro"}` }, x.prioridad),
+        h("div", { class: "accion-texto" }, h("strong", {}, x.accion),
+          x.fundamento && h("div", { class: "tenue chico" }, "Fundamento: ", x.fundamento),
+          x.fecha_limite && h("div", { class: "chico" }, "Fecha límite: ", fmt(x.fecha_limite))),
+        x.escrito_sugerido && h("button", { class: "btn btn-chico btn-ia", onclick: () => nuevoEscrito(e, { tipo: x.escrito_sugerido, instrucciones: x.accion }) },
+          "✎ Redactar: ", x.escrito_sugerido))))],
+    (r.riesgos?.length || r.datos_faltantes?.length) && h("div", { class: "rejilla-2" },
+      r.riesgos?.length > 0 && h("div", {}, h("h3", {}, "Riesgos"), h("ul", {}, r.riesgos.map((x) => h("li", {}, x)))),
+      r.datos_faltantes?.length > 0 && h("div", {}, h("h3", {}, "Información que falta"), h("ul", {}, r.datos_faltantes.map((x) => h("li", {}, x))))),
+    r.legislacion_aplicable?.length > 0 && h("p", { class: "tenue chico" }, "Legislación considerada: ", r.legislacion_aplicable.join("; ")));
+}
+
+async function analizar(e) {
+  const ok = await intentar(() => conCargando("La IA está analizando el expediente…", () => S.datos.ia("analizar", { expediente_id: e.id })), "Análisis listo");
+  if (ok) { await cargarTodo(); await cargarDetalle(e.id); }
+}
+
+// -------------------------------------------------------------- documentos
+const ESTADO_IA = { sin_procesar: ["Sin leer", "neutro"], procesando: ["Leyendo…", "ambar"], procesado: ["Leído por IA", "activo"], error: ["Error al leer", "rojo"] };
+const fmtTam = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+
+function seccionDocumentos(e, d) {
+  const input = h("input", {
+    type: "file", multiple: true, hidden: true, accept: "application/pdf,image/jpeg,image/png,image/webp",
+    onchange: () => subirArchivos(e, [...input.files]),
+  });
+  return h("section", {},
+    h("div", { class: "panel-cab" },
+      h("h2", {}, "Documentos escaneados"),
+      h("button", { class: "btn btn-primario", disabled: !d, onclick: () => input.click() }, "⬆ Subir archivos"), input),
+    h("p", { class: "tenue chico" }, "PDF o fotos (JPG/PNG) de acuerdos, demanda, contestación, etc. Máximo 30 MB por archivo. Al subirlos, la IA los lee y le propone los acuerdos y fechas para que usted los confirme."),
+    !d ? h("p", { class: "tenue" }, "Cargando…")
+      : d.documentos.length ? h("div", { class: "tabla-wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, ["Archivo", "Subido", "Lectura IA", ""].map((t) => h("th", {}, t)))),
+        h("tbody", {}, d.documentos.map((doc) => {
+          const [txt, color] = ESTADO_IA[doc.estado_ia] || ESTADO_IA.sin_procesar;
+          return h("tr", {},
+            h("td", {}, h("strong", {}, doc.nombre), h("div", { class: "tenue chico" }, fmtTam(doc.tamano),
+              doc.extraccion?.tipo_documento ? ` · ${doc.extraccion.tipo_documento}` : "")),
+            h("td", { class: "chico" }, fmtHora(doc.creado_at)),
+            h("td", {}, h("span", { class: `etiqueta etiqueta-${color}` }, txt), doc.error_ia && h("div", { class: "error chico" }, doc.error_ia)),
+            h("td", {}, h("div", { class: "acciones-fila" },
+              h("button", { class: "btn btn-chico", onclick: () => abrirDocumento(doc) }, "Ver"),
+              doc.extraccion && h("button", { class: "btn btn-chico btn-ok", onclick: () => verExtraccion(e, doc) }, "Ver lo que leyó"),
+              h("button", { class: "btn btn-chico btn-ia", onclick: () => leerConIA(e, doc) }, doc.extraccion ? "Volver a leer" : "✦ Leer con IA"))));
+        })))) : h("p", { class: "vacio" }, "Aún no hay documentos en este expediente."));
+}
+
+async function subirArchivos(e, archivos) {
+  const permitidos = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+  for (const f of archivos) {
+    if (!permitidos.includes(f.type)) { aviso(`${f.name}: solo PDF, JPG, PNG o WEBP.`, "error"); continue; }
+    if (f.size > 30 * 1024 * 1024) { aviso(`${f.name}: excede 30 MB. Divídalo en partes.`, "error"); continue; }
+    let doc;
+    const subido = await intentar(async () => { doc = await conCargando(`Subiendo ${f.name}…`, () => S.datos.subirDocumento(e.id, f)); });
+    if (!subido) continue;
+    await cargarDetalle(e.id);
+    await leerConIA(e, doc);
+  }
+}
+
+async function leerConIA(e, doc) {
+  let res;
+  const ok = await intentar(async () => {
+    res = await conCargando(`La IA está leyendo “${doc.nombre}”…`, () => S.datos.ia("extraer", { documento_id: doc.id }));
+  });
+  await cargarDetalle(e.id);
+  if (ok) verExtraccion(e, { ...doc, extraccion: res.extraccion });
+}
+
+function verExtraccion(e, doc) {
+  const x = doc.extraccion || {};
+  const dlg = h("dialog", { class: "modal modal-ancho" });
+  const cerrar = () => dlg.close();
+  const registrar = (ac) => {
+    cerrar();
+    const naturales = ac.tipo_dias === "naturales";
+    formAcuerdo({
+      expediente_id: e.id,
+      fecha_publicacion: ac.fecha_publicacion || "",
+      fecha_notificacion: ac.fecha_notificacion || "",
+      descripcion: [ac.sintesis, ac.accion_requerida && `Acción: ${ac.accion_requerida}`].filter(Boolean).join(" — "),
+      dias_termino: ac.dias_termino > 0 && !naturales ? ac.dias_termino : null,
+      modo: ac.dias_termino > 0 ? (naturales ? "fecha" : "dias") : "ninguno",
+      documento_id: doc.id,
+      propuestoIA: true,
+    }, e.id);
+    if (naturales) aviso("El término es en días naturales: capture la fecha límite manualmente.", "error");
+  };
+  // Sugerir completar datos vacíos del expediente con lo leído.
+  const sugeridos = Object.entries({ numero: x.expediente?.numero, juzgado: x.expediente?.juzgado, materia: x.expediente?.materia, tipo_juicio: x.expediente?.tipo_juicio })
+    .filter(([k, v]) => v && !String(e[k] || "").trim());
+  const etiquetas = { numero: "Número", juzgado: "Juzgado", materia: "Materia", tipo_juicio: "Tipo de juicio" };
+
+  dlg.append(h("div", { class: "modal-cuerpo" },
+    h("h2", {}, "Lo que la IA leyó en “", doc.nombre, "”"),
+    h("div", { class: "aviso-ia" }, "Propuesta generada por IA. Compare siempre contra el documento original antes de registrar."),
+    x.legible === false && h("p", { class: "error" }, "La IA indica que el documento no es legible o está incompleto."),
+    h("p", {}, h("strong", {}, x.tipo_documento ? `${x.tipo_documento[0].toUpperCase()}${x.tipo_documento.slice(1)}: ` : ""), x.resumen),
+    sugeridos.length > 0 && h("div", { class: "sugerencia" },
+      h("div", {}, "Datos del expediente encontrados: ", sugeridos.map(([k, v]) => `${etiquetas[k]}: ${v}`).join(" · ")),
+      h("button", { class: "btn btn-chico", onclick: async () => {
+        if (await intentar(() => S.datos.guardarExpediente({ ...e, ...Object.fromEntries(sugeridos) }), "Expediente actualizado")) { cerrar(); refrescar(); }
+      } }, "Completar expediente")),
+    h("h3", {}, `Acuerdos encontrados (${x.acuerdos?.length || 0})`),
+    x.acuerdos?.length ? h("div", { class: "lista-propuestas" }, x.acuerdos.map((ac) => h("div", { class: "propuesta" },
+      h("div", { class: "propuesta-cab" },
+        h("strong", {}, "Acuerdo del ", fmt(ac.fecha_acuerdo)),
+        h("span", { class: `etiqueta etiqueta-${ac.confianza === "alta" ? "activo" : ac.confianza === "media" ? "ambar" : "rojo"}` }, `confianza ${ac.confianza}`)),
+      h("p", {}, ac.sintesis),
+      h("div", { class: "tenue chico" },
+        `Publicado: ${fmt(ac.fecha_publicacion)} · Notificado: ${fmt(ac.fecha_notificacion)} · `,
+        ac.dias_termino > 0 ? `Término: ${ac.dias_termino} días ${ac.tipo_dias === "naturales" ? "naturales" : "hábiles"}` : "Sin término",
+        ac.a_cargo_de_nuestro_cliente ? " · A cargo de nuestro cliente" : ""),
+      ac.accion_requerida && h("div", { class: "chico" }, "Acción requerida: ", h("strong", {}, ac.accion_requerida)),
+      ac.texto_relevante && h("details", {}, h("summary", { class: "chico" }, "Texto del acuerdo"), h("blockquote", {}, ac.texto_relevante)),
+      h("div", { class: "acciones" },
+        h("button", { class: "btn btn-chico btn-primario", onclick: () => registrar(ac) }, "Registrar este acuerdo"),
+        ac.accion_requerida && h("button", { class: "btn btn-chico btn-ia", onclick: () => { cerrar(); nuevoEscrito(e, { tipo: ac.accion_requerida, instrucciones: ac.sintesis }); } }, "✎ Redactar escrito"))))) : h("p", { class: "tenue" }, "No se encontraron acuerdos con término en este documento."),
+    x.observaciones && h("p", { class: "tenue chico" }, "Observaciones: ", x.observaciones),
+    h("div", { class: "acciones fin" }, h("button", { class: "btn", onclick: cerrar }, "Cerrar"))));
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+// ---------------------------------------------------------------- escritos
+const ESTADO_ESCRITO = { borrador: ["Borrador", "ambar"], aprobado: ["Visto bueno", "activo"], presentado: ["Presentado", "neutro"], descartado: ["Descartado", "archivado"] };
+const ESCRITOS_COMUNES = ["Contestación de demanda", "Desahogo de vista", "Desahogo de prevención", "Ofrecimiento de pruebas", "Objeción de documentos",
+  "Alegatos", "Recurso de revocación", "Recurso de apelación", "Solicitud de copias certificadas", "Autorización de abogados y domicilio procesal",
+  "Se acuse rebeldía / se tenga por precluido el derecho", "Solicitud de fecha de audiencia", "Cumplimiento de requerimiento", "Promoción de impulso procesal", "Solicitud de ejecución de sentencia"];
+
+function seccionEscritos(e, d) {
+  return h("section", {},
+    h("div", { class: "panel-cab" },
+      h("h2", {}, "Escritos"),
+      h("button", { class: "btn btn-ia", disabled: !d, onclick: () => nuevoEscrito(e) }, "✎ Nuevo escrito con IA")),
+    !d ? h("p", { class: "tenue" }, "Cargando…")
+      : d.escritos.length ? h("div", { class: "tabla-wrap" }, h("table", {},
+        h("thead", {}, h("tr", {}, ["Escrito", "Estado", "Creado", ""].map((t) => h("th", {}, t)))),
+        h("tbody", {}, d.escritos.map((x) => {
+          const [txt, color] = ESTADO_ESCRITO[x.estado] || ESTADO_ESCRITO.borrador;
+          return h("tr", { class: "clic", onclick: () => abrirEscrito(x.id) },
+            h("td", {}, h("strong", {}, x.titulo), x.generado_ia && h("div", { class: "tenue chico" }, "Borrador elaborado por IA")),
+            h("td", {}, h("span", { class: `etiqueta etiqueta-${color}` }, txt),
+              x.presentado_at && h("div", { class: "tenue chico" }, `el ${fmt(x.presentado_at)}`)),
+            h("td", { class: "chico" }, fmtHora(x.creado_at)),
+            h("td", {}, h("button", { class: "btn btn-chico" }, "Abrir")));
+        })))) : h("p", { class: "vacio" }, "Sin escritos. Pida a la IA que elabore el que corresponda."));
+}
+
+function nuevoEscrito(e, pre = {}) {
+  const tipo = h("input", { required: true, list: "lista-escritos", value: pre.tipo || "", placeholder: "Ej. Desahogo de vista" });
+  const sugeridos = (S.detalle?.analisis?.resultado?.acciones || []).map((x) => x.escrito_sugerido).filter(Boolean);
+  const lista = h("datalist", { id: "lista-escritos" }, [...new Set([...sugeridos, ...ESCRITOS_COMUNES])].map((t) => h("option", { value: t })));
+  const pendientes = S.acuerdos.filter((a) => a.expediente_id === e.id && a.estado === "pendiente");
+  const acuerdo = h("select", {}, h("option", { value: "" }, "— Ninguno en particular —"),
+    pendientes.map((a) => h("option", { value: a.id }, `${fmt(a.fecha_notificacion)} · ${a.descripcion.slice(0, 90)}`)));
+  const instrucciones = h("textarea", { rows: 5, value: pre.instrucciones || "", placeholder: "Opcional: hechos, estrategia, pruebas a ofrecer, puntos a negar, nombre del promovente…" });
+  const msg = h("p", { class: "error", role: "alert" });
+  const dlg = h("dialog", { class: "modal" }, h("form", {
+    onsubmit: async (ev) => {
+      ev.preventDefault();
+      if (!tipo.value.trim()) { msg.textContent = "Indique qué escrito se debe elaborar."; return; }
+      dlg.close();
+      let res;
+      const ok = await intentar(async () => {
+        res = await conCargando(`La IA está redactando “${tipo.value.trim()}”…`, () => S.datos.ia("redactar", {
+          expediente_id: e.id, tipo_escrito: tipo.value.trim(), instrucciones: instrucciones.value.trim(), acuerdo_id: acuerdo.value || null,
+        }));
+      }, "Borrador listo para su revisión");
+      if (ok) abrirEscrito(res.escrito.id);
+    },
+  },
+  h("h2", {}, "Nuevo escrito con IA"),
+  h("p", { class: "tenue chico" }, "La IA usará los datos del expediente, los acuerdos y los documentos escaneados. El resultado es un BORRADOR: debe revisarlo y darle visto bueno antes de imprimirlo."),
+  h("label", {}, "¿Qué escrito se necesita?", tipo), lista,
+  h("label", {}, "Acuerdo con el que se relaciona", acuerdo),
+  h("label", {}, "Instrucciones para la IA", instrucciones), msg,
+  h("div", { class: "acciones" },
+    h("button", { type: "button", class: "btn", onclick: () => dlg.close() }, "Cancelar"),
+    h("button", { class: "btn btn-ia" }, "✎ Redactar"))));
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+async function abrirEscrito(id) {
+  try {
+    S.escritoSel = await S.datos.escrito(id);
+    S.vista = "escrito";
+    render();
+    scrollTo(0, 0);
+  } catch (e) {
+    aviso(e.message, "error");
+  }
+}
+
+const pendientesDeTexto = (t) => ({
+  completar: (t.match(/\[COMPLETAR[^\]]*\]/g) || []).length,
+  verificar: (t.match(/\[VERIFICAR[^\]]*\]/g) || []).length,
+});
+
+function vistaEscrito() {
+  const x = S.escritoSel;
+  const e = expediente(x?.expediente_id);
+  if (!x || !e) { S.vista = "expedientes"; return vistaExpedientes(); }
+  const editable = x.estado === "borrador";
+  const [txt, color] = ESTADO_ESCRITO[x.estado] || ESTADO_ESCRITO.borrador;
+  const titulo = h("input", { class: "titulo-escrito", value: x.titulo, disabled: !editable });
+  const area = h("textarea", { class: "editor-escrito", value: x.contenido, readonly: !editable, spellcheck: true });
+  const marcas = h("div", { class: "chico" });
+  const contar = () => {
+    const p = pendientesDeTexto(area.value);
+    marcas.replaceChildren(
+      p.completar ? h("span", { class: "etiqueta etiqueta-rojo" }, `${p.completar} dato(s) por completar [COMPLETAR]`) : h("span", { class: "etiqueta etiqueta-activo" }, "Sin datos por completar"),
+      " ", p.verificar ? h("span", { class: "etiqueta etiqueta-ambar" }, `${p.verificar} cita(s) por verificar [VERIFICAR]`) : "");
+  };
+  area.addEventListener("input", contar);
+  contar();
+
+  const guardar = async (cambios, ok) => {
+    if (await intentar(async () => { S.escritoSel = await S.datos.guardarEscrito({ id: x.id, ...cambios }); }, ok)) {
+      render();
+      cargarDetalle(x.expediente_id);
+    }
+  };
+  const darVistoBueno = async () => {
+    const p = pendientesDeTexto(area.value);
+    if (p.completar) { aviso("Aún hay datos [COMPLETAR] en el texto. Complételos antes de dar el visto bueno.", "error"); return; }
+    if (p.verificar && !confirm(`Hay ${p.verificar} cita(s) marcadas [VERIFICAR]. ¿Confirma que ya las revisó? (Puede borrar la marca en el texto.)`)) return;
+    if (!confirm("Al dar el visto bueno usted confirma que revisó el escrito completo. El texto quedará bloqueado. ¿Continuar?")) return;
+    await guardar({ titulo: titulo.value.trim() || x.titulo, contenido: area.value, estado: "aprobado" }, "Visto bueno registrado");
+  };
+  const marcarPresentado = () => {
+    const fecha = h("input", { type: "date", required: true, value: hoyISO() });
+    modal("Marcar escrito como presentado", [h("label", {}, "Fecha de presentación", fecha)], async () => {
+      S.escritoSel = await S.datos.guardarEscrito({ id: x.id, estado: "presentado", presentado_at: fecha.value });
+      cargarDetalle(x.expediente_id);
+    }, "Escrito marcado como presentado");
+  };
+  const notas = x.notas_ia || {};
+
+  return [
+    h("button", { class: "btn-link", onclick: () => abrirExpediente(e.id) }, `← Expediente ${e.numero}`),
+    h("div", { class: "encabezado" },
+      h("div", { class: "titulo-wrap" }, titulo, h("span", { class: `etiqueta etiqueta-${color}` }, txt)),
+      h("div", { class: "acciones" },
+        editable && [
+          h("button", { class: "btn", onclick: () => guardar({ titulo: titulo.value.trim() || x.titulo, contenido: area.value }, "Cambios guardados") }, "Guardar"),
+          h("button", { class: "btn btn-primario", onclick: darVistoBueno }, "✔ Dar visto bueno"),
+          h("button", { class: "btn", onclick: () => confirm("¿Descartar este escrito?") && guardar({ estado: "descartado" }, "Escrito descartado") }, "Descartar"),
+        ],
+        !editable && x.estado !== "descartado" && [
+          h("button", { class: "btn btn-primario", onclick: () => imprimirEscrito(x) }, "🖨 Imprimir"),
+          h("button", { class: "btn", onclick: () => descargarWord(x) }, "Descargar Word"),
+          x.estado === "aprobado" && h("button", { class: "btn btn-ok", onclick: marcarPresentado }, "Marcar presentado"),
+        ],
+        !editable && h("button", { class: "btn", onclick: () => confirm("¿Regresar a borrador? Se quitará el visto bueno.") && guardar({ estado: "borrador" }, "Regresado a borrador") }, "Regresar a borrador"))),
+    x.estado === "aprobado" && h("p", { class: "nota" }, `✔ Visto bueno de ${nombreAbogado(x.aprobado_por)} el ${fmtHora(x.aprobado_at)}. Listo para imprimir, firmar y presentar.`),
+    editable && x.generado_ia && h("div", { class: "aviso-ia" }, "Borrador elaborado por IA. Revise hechos, fundamentos y datos; complete los campos [COMPLETAR] y verifique las citas [VERIFICAR] antes de dar el visto bueno."),
+    marcas,
+    h("div", { class: "escrito-layout" },
+      area,
+      (notas.datos_por_completar?.length || notas.fundamentos?.length || notas.notas) && h("aside", { class: "notas-ia" },
+        h("h3", {}, "Notas de la IA"),
+        notas.notas && h("p", {}, notas.notas),
+        notas.datos_por_completar?.length > 0 && [h("h4", {}, "Datos por completar"), h("ul", {}, notas.datos_por_completar.map((t) => h("li", {}, t)))],
+        notas.fundamentos?.length > 0 && [h("h4", {}, "Fundamentos usados"), h("ul", {}, notas.fundamentos.map((t) => h("li", {}, t)))])),
+  ];
+}
+
+function parrafos(texto) {
+  return texto.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+}
+
+function imprimirEscrito(x) {
+  const hoja = h("div", { id: "impresion" }, parrafos(x.contenido).map((p) => h("p", {}, ...p.split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l])))));
+  document.getElementById("impresion")?.remove();
+  document.body.append(hoja);
+  window.addEventListener("afterprint", () => hoja.remove(), { once: true });
+  window.print();
+}
+
+function descargarWord(x) {
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const cuerpo = parrafos(x.contenido).map((p) => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("\n");
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${esc(x.titulo)}</title>
+<style>@page{size:21.59cm 27.94cm;margin:2.5cm 2.5cm 2.5cm 3cm}body{font-family:Arial,sans-serif;font-size:12pt;line-height:1.5}p{text-align:justify;margin:0 0 12pt}</style></head><body>${cuerpo}</body></html>`;
+  const url = URL.createObjectURL(new Blob(["﻿" + html], { type: "application/msword" }));
+  const nombre = x.titulo.normalize("NFD").replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_").slice(0, 60) || "escrito";
+  h("a", { href: url, download: `${nombre}.doc` }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function formExpediente(e = {}) {
@@ -548,10 +927,15 @@ function formExpediente(e = {}) {
   const estado = h("select", {}, h("option", { value: "activo" }, "Activo"), h("option", { value: "archivado" }, "Archivado"));
   estado.value = e.estado || "activo";
   const notas = h("textarea", { rows: 3, value: e.notas || "" });
+  const representa = h("select", {}, ["", "Actor", "Demandado", "Quejoso", "Tercero interesado", "Víctima / ofendido", "Imputado", "Trabajador", "Patrón", "Otro"]
+    .map((x) => h("option", { value: x }, x || "— Seleccione —")));
+  representa.value = e.representa || "";
+  const tipoJuicio = campo(e.tipo_juicio, { placeholder: "Ordinario civil, Ejecutivo mercantil, Amparo indirecto…" });
   modal(e.id ? "Editar expediente" : "Nuevo expediente", [
     h("div", { class: "fila" }, h("label", {}, "Número de expediente", numero), h("label", {}, "Juzgado / Tribunal", juzgado)),
     h("div", { class: "fila" }, h("label", {}, "Cliente", cliente), h("label", {}, "Contraparte", contraparte)),
-    h("div", { class: "fila" }, h("label", {}, "Materia", materia), h("label", {}, "Responsable", resp)),
+    h("div", { class: "fila" }, h("label", {}, "Materia", materia), h("label", {}, "Tipo de juicio / vía", tipoJuicio)),
+    h("div", { class: "fila" }, h("label", {}, "Parte que representamos", representa), h("label", {}, "Responsable", resp)),
     e.id && h("label", {}, "Estado", estado),
     h("label", {}, "Notas", notas),
   ], async () => {
@@ -561,6 +945,7 @@ function formExpediente(e = {}) {
       numero: numero.value.trim(), juzgado: juzgado.value.trim(), materia: materia.value.trim(),
       cliente: cliente.value.trim(), contraparte: contraparte.value.trim(),
       responsable_id: resp.value || null, estado: estado.value, notas: notas.value.trim(),
+      representa: representa.value, tipo_juicio: tipoJuicio.value.trim(),
     });
   }, e.id ? "Expediente actualizado" : "Expediente creado");
 }
