@@ -4,6 +4,8 @@ import {
 import { SupabaseDatos, DemoDatos } from "./data.js";
 
 const CFG = window.DESPACHO_CONFIG || {};
+// Interruptor de la IA: con IA_ACTIVA: false en config.js no se llama a la API (sin costo).
+const IA = CFG.IA_ACTIVA !== false;
 const MINUTOS_INACTIVIDAD = CFG.MINUTOS_INACTIVIDAD || 20;
 const raiz = document.getElementById("app");
 
@@ -588,11 +590,11 @@ function vistaDetalleExpediente() {
         ["Responsable", nombreAbogado(e.responsable_id)], ["Estado", e.estado], ["Notas", e.notas]]
         .flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v || "—")])),
     d?.error && h("p", { class: "error" }, d.error),
-    seccionAnalisis(e, d),
+    IA && seccionAnalisis(e, d),
     h("h2", {}, "Acuerdos"),
-    acs.length ? tablaAcuerdos(acs, false) : h("p", { class: "vacio" }, "Sin acuerdos registrados. Suba el acuerdo escaneado y la IA le propondrá los datos."),
+    acs.length ? tablaAcuerdos(acs, false) : h("p", { class: "vacio" }, IA ? "Sin acuerdos registrados. Suba el acuerdo escaneado y la IA le propondrá los datos." : "Sin acuerdos registrados."),
     seccionDocumentos(e, d),
-    seccionEscritos(e, d),
+    (IA || d?.escritos?.length > 0) && seccionEscritos(e, d),
   ];
 }
 
@@ -649,7 +651,7 @@ function seccionDocumentos(e, d) {
     h("div", { class: "panel-cab" },
       h("h2", {}, "Documentos escaneados"),
       h("button", { class: "btn btn-primario", disabled: !d, onclick: () => input.click() }, "⬆ Subir archivos"), input),
-    h("p", { class: "tenue chico" }, "PDF o fotos (JPG/PNG) de acuerdos, demanda, contestación, etc. Máximo 30 MB por archivo. Al subirlos, la IA los lee y le propone los acuerdos y fechas para que usted los confirme."),
+    h("p", { class: "tenue chico" }, "PDF o fotos (JPG/PNG) de acuerdos, demanda, contestación, etc. Máximo 30 MB por archivo." + (IA ? " Al subirlos, la IA los lee y le propone los acuerdos y fechas para que usted los confirme." : "")),
     !d ? h("p", { class: "tenue" }, "Cargando…")
       : d.documentos.length ? h("div", { class: "tabla-wrap" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Archivo", "Subido", "Lectura IA", ""].map((t) => h("th", {}, t)))),
@@ -663,7 +665,7 @@ function seccionDocumentos(e, d) {
             h("td", {}, h("div", { class: "acciones-fila" },
               h("button", { class: "btn btn-chico", onclick: () => abrirDocumento(doc) }, "Ver"),
               doc.extraccion && h("button", { class: "btn btn-chico btn-ok", onclick: () => verExtraccion(e, doc) }, "Ver lo que leyó"),
-              h("button", { class: "btn btn-chico btn-ia", onclick: () => leerConIA(e, doc) }, doc.extraccion ? "Volver a leer" : "✦ Leer con IA"))));
+              IA && h("button", { class: "btn btn-chico btn-ia", onclick: () => leerConIA(e, doc) }, doc.extraccion ? "Volver a leer" : "✦ Leer con IA"))));
         })))) : h("p", { class: "vacio" }, "Aún no hay documentos en este expediente."));
 }
 
@@ -676,7 +678,8 @@ async function subirArchivos(e, archivos) {
     const subido = await intentar(async () => { doc = await conCargando(`Subiendo ${f.name}…`, () => S.datos.subirDocumento(e.id, f)); });
     if (!subido) continue;
     await cargarDetalle(e.id);
-    await leerConIA(e, doc);
+    if (IA) await leerConIA(e, doc);
+    else aviso(`${f.name} guardado en el expediente`);
   }
 }
 
@@ -737,7 +740,7 @@ function verExtraccion(e, doc) {
       ac.texto_relevante && h("details", {}, h("summary", { class: "chico" }, "Texto del acuerdo"), h("blockquote", {}, ac.texto_relevante)),
       h("div", { class: "acciones" },
         h("button", { class: "btn btn-chico btn-primario", onclick: () => registrar(ac) }, "Registrar este acuerdo"),
-        ac.accion_requerida && h("button", { class: "btn btn-chico btn-ia", onclick: () => { cerrar(); nuevoEscrito(e, { tipo: ac.accion_requerida, instrucciones: ac.sintesis }); } }, "✎ Redactar escrito"))))) : h("p", { class: "tenue" }, "No se encontraron acuerdos con término en este documento."),
+        IA && ac.accion_requerida && h("button", { class: "btn btn-chico btn-ia", onclick: () => { cerrar(); nuevoEscrito(e, { tipo: ac.accion_requerida, instrucciones: ac.sintesis }); } }, "✎ Redactar escrito"))))) : h("p", { class: "tenue" }, "No se encontraron acuerdos con término en este documento."),
     x.observaciones && h("p", { class: "tenue chico" }, "Observaciones: ", x.observaciones),
     h("div", { class: "acciones fin" }, h("button", { class: "btn", onclick: cerrar }, "Cerrar"))));
   dlg.addEventListener("close", () => dlg.remove());
@@ -755,7 +758,7 @@ function seccionEscritos(e, d) {
   return h("section", {},
     h("div", { class: "panel-cab" },
       h("h2", {}, "Escritos"),
-      h("button", { class: "btn btn-ia", disabled: !d, onclick: () => nuevoEscrito(e) }, "✎ Nuevo escrito con IA")),
+      IA && h("button", { class: "btn btn-ia", disabled: !d, onclick: () => nuevoEscrito(e) }, "✎ Nuevo escrito con IA")),
     !d ? h("p", { class: "tenue" }, "Cargando…")
       : d.escritos.length ? h("div", { class: "tabla-wrap" }, h("table", {},
         h("thead", {}, h("tr", {}, ["Escrito", "Estado", "Creado", ""].map((t) => h("th", {}, t)))),
