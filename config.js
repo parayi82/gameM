@@ -7,4 +7,5 @@ window.DESPACHO_CONFIG = {
   SUPABASE_URL: "https://ybixdzawjblaofvxuzav.supabase.co",
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InliaXhkemF3amJsYW9mdnh1emF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0NTI0ODcsImV4cCI6MjExMDAyODQ4N30.DjK-esDYTL1PqNOb8j-Xd-fSdP0SB3J62yvsoebGhWo",
   MINUTOS_INACTIVIDAD: 20, // cierre automático de sesión
+  IA_ACTIVA: false, // true = lectura de documentos, análisis y escritos con IA (con costo de API)
 };
