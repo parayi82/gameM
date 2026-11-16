@@ -2,6 +2,7 @@ import {
   hoyISO, calcularVencimiento, semaforo, describirRestante, diasHabilesRestantes,
 } from "./plazos.js";
 import { SupabaseDatos, DemoDatos } from "./data.js";
+import { buscarEnBoletin } from "./boletin.js";
 
 const CFG = window.DESPACHO_CONFIG || {};
 // Interruptor de la IA: con IA_ACTIVA: false en config.js no se llama a la API (sin costo).
@@ -75,13 +76,15 @@ const nombreAbogado = (id) => {
 const expediente = (id) => S.expedientes.find((x) => x.id === id);
 
 async function cargarTodo() {
-  const [abogados, expedientes, acuerdos, inhabiles] = await Promise.all([
+  const [abogados, expedientes, acuerdos, inhabiles, nuevas] = await Promise.all([
     S.datos.abogados(), S.datos.expedientes(), S.datos.acuerdos(), S.datos.inhabiles(),
+    S.datos.publicaciones({ estado: "nueva" }).catch(() => []), // si la migración 003 aún no corre
   ]);
-  Object.assign(S, { abogados, expedientes, acuerdos, inhabiles, inhSet: new Set(inhabiles.map((x) => x.fecha)) });
+  Object.assign(S, { abogados, expedientes, acuerdos, inhabiles, inhSet: new Set(inhabiles.map((x) => x.fecha)), pubNuevas: nuevas });
 }
 
 async function refrescar() {
+  S.bandeja = null;
   await intentar(cargarTodo);
   render();
 }
@@ -262,6 +265,7 @@ function render() {
   const esAdmin = S.perfil?.rol === "admin";
   const pestañas = [
     ["agenda", "Agenda de términos"],
+    ["bandeja", "Bandeja"],
     ["expedientes", "Expedientes"],
     ["inhabiles", "Días inhábiles"],
     ...(esAdmin ? [["equipo", "Equipo"], ["bitacora", "Bitácora"]] : []),
@@ -270,7 +274,7 @@ function render() {
   const urgentes = S.acuerdos.filter((a) => a.estado === "pendiente" && a.fecha_vencimiento && a.fecha_vencimiento <= hoyISO()).length;
 
   const cuerpo = {
-    agenda: vistaAgenda, expedientes: vistaExpedientes, inhabiles: vistaInhabiles,
+    agenda: vistaAgenda, bandeja: vistaBandeja, expedientes: vistaExpedientes, inhabiles: vistaInhabiles,
     equipo: vistaEquipo, bitacora: vistaBitacora, expediente: vistaDetalleExpediente, escrito: vistaEscrito,
   }[S.vista]();
 
@@ -284,7 +288,8 @@ function render() {
         h("button", {
           class: `tab ${S.vista === id || (id === "expedientes" && ["expediente", "escrito"].includes(S.vista)) ? "activa" : ""}`,
           onclick: () => { S.vista = id; render(); },
-        }, txt, id === "agenda" && urgentes ? h("span", { class: "insignia", title: "Vencidos o vencen hoy" }, urgentes) : null))),
+        }, txt, id === "agenda" && urgentes ? h("span", { class: "insignia", title: "Vencidos o vencen hoy" }, urgentes) : null,
+          id === "bandeja" && S.pubNuevas?.length ? h("span", { class: "insignia insignia-azul", title: "Publicaciones nuevas por revisar" }, S.pubNuevas.length) : null))),
       h("div", { class: "usuario" },
         h("span", {}, S.perfil.nombre || S.perfil.email),
         h("button", { class: "btn btn-chico", onclick: salir }, "Salir"))),
@@ -315,6 +320,9 @@ function vistaAgenda() {
       h("div", { class: "acciones" },
         h("button", { class: "btn", onclick: exportarCSV }, "Exportar CSV"),
         h("button", { class: "btn btn-primario", onclick: () => formAcuerdo() }, "+ Registrar acuerdo"))),
+    S.pubNuevas?.length > 0 && h("div", { class: "aviso-bandeja" },
+      h("span", {}, `📬 Tiene ${S.pubNuevas.length} publicación(es) nueva(s) del boletín o de correos sin registrar.`),
+      h("button", { class: "btn btn-chico btn-primario", onclick: () => { S.vista = "bandeja"; render(); } }, "Revisar bandeja")),
     h("div", { class: "resumen" },
       kpi("Vencidos", cuenta((r) => r < 0), "rojo"),
       kpi("Vencen hoy", cuenta((r) => r === 0), "rojo"),
@@ -448,6 +456,7 @@ function formAcuerdo(a = {}, expedienteFijo) {
 
   modal(a.id ? "Editar acuerdo" : "Registrar acuerdo", [
     a.propuestoIA && h("div", { class: "aviso-ia" }, "Datos propuestos por la IA a partir del documento. Verifíquelos contra el original antes de guardar."),
+    a.publicacion_id && h("div", { class: "aviso-ia" }, "Datos tomados de la publicación. Ajuste la fecha de notificación y el término según la regla de su materia (por boletín, la notificación suele surtir efectos al día hábil siguiente)."),
     h("label", {}, "Expediente", exp),
     h("div", { class: "fila" }, h("label", {}, "Fecha de publicación", pub), h("label", {}, "Fecha de notificación", notif)),
     h("label", {}, "Acuerdo", desc),
@@ -461,7 +470,7 @@ function formAcuerdo(a = {}, expedienteFijo) {
     const v = vencimiento();
     if (modo.value !== "ninguno" && !v) throw new Error("Indique el plazo.");
     if (v && v < notif.value) throw new Error("El vencimiento no puede ser anterior a la notificación.");
-    await S.datos.guardarAcuerdo({
+    const guardado = await S.datos.guardarAcuerdo({
       ...(a.id ? { id: a.id } : {}),
       expediente_id: exp.value,
       fecha_publicacion: pub.value || null,
@@ -473,6 +482,9 @@ function formAcuerdo(a = {}, expedienteFijo) {
       responsable_id: resp.value || null,
       ...(a.documento_id ? { documento_id: a.documento_id } : {}),
     });
+    if (a.publicacion_id && guardado?.id) {
+      await S.datos.actualizarPublicacion(a.publicacion_id, { estado: "registrada", acuerdo_id: guardado.id, expediente_id: exp.value });
+    }
     if (S.vista === "expediente") cargarDetalle(exp.value);
   }, a.id ? "Acuerdo actualizado" : "Acuerdo registrado");
 }
@@ -532,11 +544,12 @@ function abrirExpediente(id) {
 
 async function cargarDetalle(id) {
   try {
-    const [documentos, escritos, analisis] = await Promise.all([
+    const [documentos, escritos, analisis, publicaciones] = await Promise.all([
       S.datos.documentos(id), S.datos.escritos(id), S.datos.ultimoAnalisis(id),
+      S.datos.publicaciones({ expedienteId: id }).catch(() => []),
     ]);
     if (S.expedienteSel !== id) return;
-    S.detalle = { documentos, escritos, analisis };
+    S.detalle = { documentos, escritos, analisis, publicaciones };
   } catch (e) {
     S.detalle = { documentos: [], escritos: [], analisis: null, error: e.message };
   }
@@ -593,6 +606,7 @@ function vistaDetalleExpediente() {
     IA && seccionAnalisis(e, d),
     h("h2", {}, "Acuerdos"),
     acs.length ? tablaAcuerdos(acs, false) : h("p", { class: "vacio" }, IA ? "Sin acuerdos registrados. Suba el acuerdo escaneado y la IA le propondrá los datos." : "Sin acuerdos registrados."),
+    d?.publicaciones?.length > 0 && h("section", {}, h("h2", {}, "Publicaciones del boletín y correos"), listaPublicaciones(d.publicaciones, { conExpediente: false })),
     seccionDocumentos(e, d),
     (IA || d?.escritos?.length > 0) && seccionEscritos(e, d),
   ];
@@ -1067,6 +1081,178 @@ function modal(titulo, campos, alGuardar, ok) {
   dlg.addEventListener("close", () => dlg.remove());
   document.body.append(dlg);
   dlg.showModal();
+}
+
+// ---------------------------------------------- bandeja de publicaciones
+const ORIGENES = [
+  "Boletín Judicial del Estado de Jalisco",
+  "Juzgados laborales (Poder Judicial de Jalisco)",
+  "Lista de acuerdos — Poder Judicial de la Federación",
+  "Boletín Electrónico — TJA Jalisco",
+  "Otro",
+];
+const ETIQUETA_FUENTE = { boletin: "Boletín", correo: "Correo", manual: "Manual" };
+
+async function cargarBandeja() {
+  const filtro = S.bandejaFiltro || "nueva";
+  S.bandeja = { filtro, lista: null };
+  try {
+    const lista = await S.datos.publicaciones({ estado: filtro });
+    if (S.bandeja?.filtro === filtro) S.bandeja.lista = lista;
+  } catch (e) {
+    S.bandeja = { filtro, lista: [], error: e.message.includes("publicaciones") ? "Falta ejecutar supabase/003_publicaciones.sql en Supabase." : e.message };
+  }
+  if (S.vista === "bandeja") render();
+}
+
+function vistaBandeja() {
+  const filtro = S.bandejaFiltro || "nueva";
+  if (!S.bandeja || S.bandeja.filtro !== filtro) cargarBandeja();
+  const b = S.bandeja;
+  return [
+    h("div", { class: "encabezado" }, h("h1", {}, "Bandeja de publicaciones")),
+    h("p", { class: "tenue" }, "Aquí llegan los acuerdos publicados en boletines y listas, y las notificaciones por correo, ya vinculados a sus expedientes. Revise cada uno y regístrelo como acuerdo para que entre a la agenda de términos."),
+    panelImportar(),
+    h("div", { class: "filtros" },
+      h("div", { class: "segmentado" },
+        [["nueva", "Por revisar"], ["registrada", "Registradas"], ["descartada", "Descartadas"]].map(([f, t]) =>
+          h("button", { class: filtro === f ? "activa" : "", onclick: () => { S.bandejaFiltro = f; render(); } }, t)))),
+    b?.error && h("p", { class: "error" }, b.error),
+    !b?.lista ? h("p", { class: "tenue" }, "Cargando…")
+      : b.lista.length ? listaPublicaciones(b.lista, { conExpediente: true })
+        : h("p", { class: "vacio" }, filtro === "nueva" ? "No hay publicaciones por revisar. 👍" : "Sin publicaciones en esta sección."),
+  ];
+}
+
+/** Lee el texto de un PDF digital (no escaneado) con pdf.js, en el navegador. */
+async function extraerTextoPDF(archivo) {
+  const pdfjs = await import("./vendor/pdfjs-6.4.299/pdf.min.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("./vendor/pdfjs-6.4.299/pdf.worker.min.mjs", location.href).href;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(await archivo.arrayBuffer()), isEvalSupported: false }).promise;
+  let texto = "";
+  for (let i = 1; i <= doc.numPages; i++) {
+    const pagina = await doc.getPage(i);
+    const contenido = await pagina.getTextContent();
+    for (const item of contenido.items) texto += item.str + (item.hasEOL ? "\n" : " ");
+    texto += "\n";
+  }
+  return texto;
+}
+
+function panelImportar() {
+  const fecha = h("input", { type: "date", value: hoyISO() });
+  const origen = h("select", {}, ORIGENES.map((o) => h("option", { value: o }, o)));
+  const texto = h("textarea", { rows: 7, placeholder: "Pegue aquí el boletín o la lista de acuerdos del día (Ctrl+V)…" });
+  const estado = h("span", { class: "tenue chico" });
+  const resultados = h("div");
+  const archivo = h("input", {
+    type: "file", hidden: true, accept: "application/pdf,text/plain,.txt",
+    onchange: async () => {
+      const f = archivo.files[0];
+      if (!f) return;
+      estado.textContent = `Leyendo ${f.name}…`;
+      try {
+        texto.value = f.type === "application/pdf" ? await extraerTextoPDF(f) : await f.text();
+        estado.textContent = `${f.name}: ${texto.value.length.toLocaleString("es-MX")} caracteres leídos.`;
+        if (texto.value.trim().length < 50) estado.textContent += " El PDF parece escaneado (sin texto): copie y pegue el texto desde el sitio del tribunal.";
+      } catch (e) {
+        estado.textContent = `No se pudo leer el archivo: ${e.message}`;
+      }
+      archivo.value = "";
+    },
+  });
+
+  const buscar = () => {
+    if (!texto.value.trim()) { aviso("Pegue el texto del boletín o suba el PDF.", "error"); return; }
+    const hallazgos = buscarEnBoletin(texto.value, S.expedientes);
+    resultados.replaceChildren();
+    if (!hallazgos.length) {
+      resultados.append(h("p", { class: "vacio" }, "No se encontró ninguno de sus expedientes activos en este texto."));
+      return;
+    }
+    const marcas = hallazgos.map(() => h("input", { type: "checkbox", checked: true }));
+    resultados.append(
+      h("h3", {}, `Se encontraron ${hallazgos.length} publicación(es) de sus expedientes`),
+      h("div", { class: "lista-propuestas" }, hallazgos.map((x, i) => {
+        const e = expediente(x.expediente_id) || {};
+        return h("label", { class: "propuesta propuesta-check" }, marcas[i],
+          h("div", {},
+            h("div", { class: "propuesta-cab" },
+              h("strong", {}, `${e.numero} · ${e.cliente}`),
+              h("span", { class: `etiqueta etiqueta-${x.confianza === "alta" ? "activo" : "ambar"}` }, `confianza ${x.confianza}`)),
+            h("div", { class: "tenue chico" }, x.motivo, x.juzgado_detectado ? ` — ${x.juzgado_detectado}` : ""),
+            h("pre", { class: "texto-publicacion" }, x.texto)));
+      })),
+      h("div", { class: "acciones fin" }, h("button", {
+        class: "btn btn-primario",
+        onclick: async () => {
+          const filas = hallazgos.filter((_, i) => marcas[i].checked).map((x) => ({
+            expediente_id: x.expediente_id, fuente: "boletin", origen: origen.value, fecha_publicacion: fecha.value || hoyISO(),
+            juzgado_detectado: x.juzgado_detectado, texto: x.texto, confianza: x.confianza, motivo: x.motivo,
+          }));
+          if (!filas.length) return;
+          let nuevas = 0;
+          if (await intentar(async () => { nuevas = await S.datos.guardarPublicaciones(filas); })) {
+            aviso(nuevas === filas.length ? `${nuevas} agregada(s) a la bandeja` : `${nuevas} nueva(s); ${filas.length - nuevas} ya estaban en la bandeja`);
+            texto.value = "";
+            resultados.replaceChildren();
+            S.bandejaFiltro = "nueva";
+            await refrescar();
+          }
+        },
+      }, "Agregar a la bandeja")));
+  };
+
+  return h("details", { class: "panel-importar", open: !S.pubNuevas?.length },
+    h("summary", {}, h("strong", {}, "Importar boletín o lista de acuerdos del día")),
+    h("div", { class: "fila" }, h("label", {}, "Fecha de publicación", fecha), h("label", {}, "Boletín / lista", origen)),
+    h("label", {}, "Texto del boletín", texto),
+    h("div", { class: "acciones" },
+      h("button", { class: "btn", type: "button", onclick: () => archivo.click() }, "📄 Subir PDF o TXT"), archivo,
+      h("button", { class: "btn btn-primario", type: "button", onclick: buscar }, "🔎 Buscar mis expedientes"), estado),
+    resultados);
+}
+
+function listaPublicaciones(lista, { conExpediente }) {
+  return h("div", { class: "lista-propuestas" }, lista.map((p) => {
+    const e = expediente(p.expediente_id);
+    const vincular = !e && p.estado === "nueva" && h("select", {
+      onchange: async (ev) => {
+        if (!ev.target.value) return;
+        if (await intentar(() => S.datos.actualizarPublicacion(p.id, { expediente_id: ev.target.value, motivo: "Vinculada manualmente" }), "Publicación vinculada")) refrescar();
+      },
+    }, h("option", { value: "" }, "Vincular a expediente…"),
+    S.expedientes.filter((x) => x.estado === "activo").map((x) => h("option", { value: x.id }, `${x.numero} · ${x.juzgado} · ${x.cliente}`)));
+    return h("article", { class: `propuesta publicacion-${p.estado}` },
+      h("div", { class: "propuesta-cab" },
+        h("div", {},
+          conExpediente && (e
+            ? h("button", { class: "btn-link", onclick: () => abrirExpediente(e.id) }, h("strong", {}, `${e.numero} · ${e.cliente}`))
+            : h("strong", { class: "error" }, "Sin vincular")),
+          h("div", { class: "tenue chico" },
+            `${ETIQUETA_FUENTE[p.fuente] || p.fuente} · publicado ${fmt(p.fecha_publicacion)}`, p.origen ? ` · ${p.origen}` : "")),
+        h("span", { class: `etiqueta etiqueta-${p.confianza === "alta" ? "activo" : p.confianza === "media" ? "ambar" : "rojo"}` }, `confianza ${p.confianza}`)),
+      p.asunto && h("div", { class: "chico" }, h("strong", {}, "Asunto: "), p.asunto),
+      p.motivo && h("div", { class: "tenue chico" }, p.motivo, p.juzgado_detectado ? ` — ${p.juzgado_detectado}` : ""),
+      h("details", { open: p.texto.length < 500 }, h("summary", { class: "chico" }, "Texto publicado"), h("pre", { class: "texto-publicacion" }, p.texto)),
+      h("div", { class: "acciones" },
+        p.documento_id && h("button", { class: "btn btn-chico", onclick: () => abrirDocumento({ id: p.documento_id }) }, "📎 Ver adjunto"),
+        p.estado === "nueva" && vincular,
+        p.estado === "nueva" && e && h("button", {
+          class: "btn btn-chico btn-primario",
+          onclick: () => formAcuerdo({
+            expediente_id: e.id, fecha_publicacion: p.fecha_publicacion, fecha_notificacion: p.fecha_publicacion,
+            descripcion: p.texto.replace(/\s+/g, " ").replace(/^\d{1,4}[.)-]\s+/, "").slice(0, 600), documento_id: p.documento_id || undefined, publicacion_id: p.id,
+          }, e.id),
+        }, "Registrar acuerdo"),
+        p.estado === "nueva" && h("button", { class: "btn btn-chico", onclick: async () => {
+          if (await intentar(() => S.datos.actualizarPublicacion(p.id, { estado: "descartada" }), "Publicación descartada")) refrescar();
+        } }, "Descartar"),
+        p.estado === "registrada" && h("span", { class: "nota" }, "✔ Registrada como acuerdo"),
+        p.estado === "descartada" && h("button", { class: "btn btn-chico", onclick: async () => {
+          if (await intentar(() => S.datos.actualizarPublicacion(p.id, { estado: "nueva" }), "Publicación restaurada")) refrescar();
+        } }, "Restaurar")));
+  }));
 }
 
 iniciar().catch((e) => pantallaCentrada(h("h1", {}, "Error"), h("p", { class: "error" }, e.message)));

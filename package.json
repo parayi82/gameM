@@ -6,8 +6,9 @@
   "description": "Despacho jurídico — control de expedientes y términos de acuerdos",
   "scripts": {
     "dev": "npx --yes serve . -l 8080",
-    "test": "node --test tests/*.test.mjs",
-    "test:ia": "deno test --node-modules-dir=none --allow-net --allow-env tests/ia.test.ts"
+    "test": "node --test tests/*.test.mjs && node scripts/generar-buzon.mjs --verificar",
+    "test:ia": "deno test --node-modules-dir=none --allow-net --allow-env --allow-read --allow-run=node tests/ia.test.ts tests/buzon.test.ts",
+    "generar:buzon": "node scripts/generar-buzon.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

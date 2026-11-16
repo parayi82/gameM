@@ -23,6 +23,19 @@ obligatoria.
   cuándo, qué cambió). Nadie, ni el administrador, puede borrarla.
 - **Exportar a CSV** (respaldo / Excel).
 
+## Bandeja de publicaciones (boletín y correos)
+
+Los acuerdos publicados en el **Boletín Judicial de Jalisco**, juzgados
+laborales, **listas de acuerdos del PJF** y el **Boletín Electrónico del TJA**,
+y las **notificaciones por correo**, llegan a la pestaña **Bandeja** ya
+vinculados a su expediente (por número, juzgado y partes). El abogado revisa
+y con un clic los registra como acuerdo para que entren a la agenda.
+
+- **Boletín del día**: pegar el texto o subir el PDF → *Buscar mis expedientes*.
+- **Correos**: un script gratuito en Gmail los manda cada 15 minutos a la
+  función `buzon` (con sus PDF adjuntos).
+- Instalación y uso: **[docs/boletin-y-correos.md](docs/boletin-y-correos.md)**.
+
 ## Asistente con IA (documentos, etapa del juicio y escritos)
 
 Dentro de cada expediente:
@@ -161,5 +174,9 @@ vendor/                          supabase-js 2.45.4 (sin CDN)
 supabase/schema.sql              tablas, RLS, triggers, bitácora
 supabase/002_documentos_ia.sql   documentos, análisis, escritos y almacenamiento
 supabase/functions/ia/index.ts   agentes de IA (lector, analista, redactor)
+supabase/003_publicaciones.sql   bandeja de publicaciones
+boletin.js                       motor que reconoce los expedientes en boletines y correos
+supabase/functions/buzon/        función que recibe los correos (index.ts se genera)
+docs/gmail-a-lexpress.gs         script de Gmail que reenvía las notificaciones
 netlify/functions/despacho-recordatorios.mjs   correo diario
 ```

@@ -37,24 +37,30 @@ export default async () => {
       .eq("estado", "pendiente").not("fecha_vencimiento", "is", null).lte("fecha_vencimiento", hasta)
       .order("fecha_vencimiento"),
     sb.from("abogados").select("id, email, nombre, rol, activo").eq("activo", true),
-    sb.from("expedientes").select("id, numero, juzgado, cliente"),
+    sb.from("expedientes").select("id, numero, juzgado, cliente, responsable_id"),
   ]);
   if (e1 || e2 || e3) throw new Error((e1 || e2 || e3).message);
+  // Publicaciones del boletín/correos sin registrar (si la migración 003 ya corrió).
+  const { data: pubs } = await sb.from("publicaciones").select("id, expediente_id").eq("estado", "nueva");
 
   const exp = Object.fromEntries(expedientes.map((e) => [e.id, e]));
   const admins = abogados.filter((a) => a.rol === "admin");
   const porAbogado = new Map();
+  const entrada = (d) => {
+    if (!porAbogado.has(d.id)) porAbogado.set(d.id, { abogado: d, lista: [], pubs: 0 });
+    return porAbogado.get(d.id);
+  };
   for (const ac of acuerdos) {
     const dueño = abogados.find((a) => a.id === ac.responsable_id);
-    const destinos = dueño ? [dueño] : admins;
-    for (const d of destinos) {
-      if (!porAbogado.has(d.id)) porAbogado.set(d.id, { abogado: d, lista: [] });
-      porAbogado.get(d.id).lista.push(ac);
-    }
+    for (const d of dueño ? [dueño] : admins) entrada(d).lista.push(ac);
+  }
+  for (const p of pubs ?? []) {
+    const dueño = abogados.find((a) => a.id === exp[p.expediente_id]?.responsable_id);
+    for (const d of dueño ? [dueño] : admins) entrada(d).pubs++;
   }
 
   let enviados = 0;
-  for (const { abogado, lista } of porAbogado.values()) {
+  for (const { abogado, lista, pubs: nPubs } of porAbogado.values()) {
     const vencidos = lista.filter((a) => a.fecha_vencimiento < hoy).length;
     const deHoy = lista.filter((a) => a.fecha_vencimiento === hoy).length;
     const filas = lista.map((a) => {
@@ -67,10 +73,15 @@ export default async () => {
     }).join("");
     const asunto = vencidos || deHoy
       ? `⚠ ${vencidos ? `${vencidos} vencido(s)` : ""}${vencidos && deHoy ? " y " : ""}${deHoy ? `${deHoy} vence(n) HOY` : ""} — agenda de términos`
-      : `Agenda de términos: ${lista.length} próximo(s) vencimiento(s)`;
+      : lista.length ? `Agenda de términos: ${lista.length} próximo(s) vencimiento(s)`
+        : `📬 ${nPubs} publicación(es) del boletín por revisar`;
+    const avisoPubs = nPubs
+      ? `<p style="background:#e8eef6;padding:8px 12px;border-radius:6px">📬 Tiene <b>${nPubs}</b> publicación(es) del boletín o de correos sin registrar en la Bandeja de Lexpress.</p>`
+      : "";
     const html = `<div style="font-family:system-ui,sans-serif;color:#1d232b">
-      <p>Buen día ${esc(abogado.nombre || "")}, estos son sus términos pendientes al ${fmt(hoy)}:</p>
-      <table style="border-collapse:collapse;border:1px solid #ddd">${filas}</table>
+      <p>Buen día ${esc(abogado.nombre || "")}${lista.length ? `, estos son sus términos pendientes al ${fmt(hoy)}:` : "."}</p>
+      ${avisoPubs}
+      ${lista.length ? `<table style="border-collapse:collapse;border:1px solid #ddd">${filas}</table>` : ""}
       ${env.DESPACHO_URL ? `<p><a href="${esc(env.DESPACHO_URL)}">Abrir la agenda</a></p>` : ""}
       <p style="color:#888;font-size:12px">Correo automático. Marque cada acuerdo como atendido en la app para dejar de recibirlo.</p></div>`;
 
