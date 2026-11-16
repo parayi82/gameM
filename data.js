@@ -39,8 +39,24 @@ export class SupabaseDatos {
   }
   async guardarAcuerdo(ac) {
     const { id, ...campos } = ac;
-    if (id) revisar(await this.sb.from("acuerdos").update(campos).eq("id", id));
-    else revisar(await this.sb.from("acuerdos").insert(campos));
+    if (id) return revisar(await this.sb.from("acuerdos").update(campos).eq("id", id).select().single());
+    return revisar(await this.sb.from("acuerdos").insert(campos).select().single());
+  }
+
+  // ------------------------------------------- bandeja de publicaciones
+  async publicaciones({ estado, expedienteId } = {}) {
+    let q = this.sb.from("publicaciones").select("*").order("fecha_publicacion", { ascending: false }).order("creado_at", { ascending: false }).limit(500);
+    if (estado) q = q.eq("estado", estado);
+    if (expedienteId) q = q.eq("expediente_id", expedienteId);
+    return revisar(await q);
+  }
+  /** Inserta y omite las que ya existían (misma huella). Devuelve cuántas eran nuevas. */
+  async guardarPublicaciones(filas) {
+    const r = revisar(await this.sb.from("publicaciones").upsert(filas, { onConflict: "huella", ignoreDuplicates: true }).select("id"));
+    return r.length;
+  }
+  async actualizarPublicacion(id, cambios) {
+    revisar(await this.sb.from("publicaciones").update(cambios).eq("id", id));
   }
 
   async inhabiles() {
@@ -205,7 +221,27 @@ export class DemoDatos {
     this._upsert("expedientes", exp);
   }
   async acuerdos() { return structuredClone(this.db.acuerdos); }
-  async guardarAcuerdo(ac) { this._upsert("acuerdos", ac); }
+  async guardarAcuerdo(ac) {
+    this._upsert("acuerdos", ac.id ? ac : { estado: "pendiente", nota_atencion: "", atendido_por: null, atendido_at: null, ...ac });
+    return structuredClone(ac.id ? this.db.acuerdos.find((x) => x.id === ac.id) : this.db.acuerdos.at(-1));
+  }
+  async publicaciones({ estado, expedienteId } = {}) {
+    return this._tabla("publicaciones")
+      .filter((p) => (!estado || p.estado === estado) && (!expedienteId || p.expediente_id === expedienteId))
+      .sort((a, b) => b.fecha_publicacion.localeCompare(a.fecha_publicacion) || b.creado_at.localeCompare(a.creado_at));
+  }
+  async guardarPublicaciones(filas) {
+    const lista = this._tabla("publicaciones");
+    let nuevas = 0;
+    for (const f of filas) {
+      const huella = `${f.expediente_id}|${f.fecha_publicacion}|${f.texto}`;
+      if (lista.some((p) => `${p.expediente_id}|${p.fecha_publicacion}|${p.texto}` === huella)) continue;
+      this._upsert("publicaciones", { estado: "nueva", acuerdo_id: null, documento_id: null, asunto: "", ...f });
+      nuevas++;
+    }
+    return nuevas;
+  }
+  async actualizarPublicacion(id, cambios) { this._upsert("publicaciones", { id, ...cambios }); }
   async inhabiles() { return [...this.db.inhabiles].sort((a, b) => a.fecha.localeCompare(b.fecha)); }
   async agregarInhabil(fecha, motivo) {
     this.db.inhabiles = this.db.inhabiles.filter((x) => x.fecha !== fecha);
